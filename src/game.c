@@ -34,6 +34,8 @@ static int test_mx = -1, test_my, test_mb;
 static uint16_t test_k;
 static int nselected;
 
+static int unit_shown(const Unit* u);
+
 enum { M_NONE, M_MOVE, M_ATTACK, M_PATROL, M_GUARD, M_DGUN, M_RECLAIM, M_BUILD };
 
 #define EDGE_SPEED 512 /* pixels a second the screen's edges scroll the view */
@@ -345,8 +347,8 @@ static void order_build(int wx, int wz, int queue) {
 
 static void click_battlefield(int sx, int sy, int queue) {
     int wx, wz, wsy = sy - VIEW_Y + camy, wxs = sx - VIEW_X + camx;
-    int own = unit_at(wxs, wsy, 1 << PLAYER);
-    int enemy = unit_at(wxs, wsy, 1 << ENEMY);
+    int own = unit_at(wxs, wsy, 1 << PLAYER, unit_shown);
+    int enemy = unit_at(wxs, wsy, 1 << ENEMY, unit_shown);
     screen_to_world(sx, sy, &wx, &wz);
     switch (mode) {
     case M_BUILD:
@@ -608,7 +610,8 @@ static void draw_side_panel(uint8_t* scr) {
 /* ------------------------------------------------------------ what each screen holds */
 
 /* The battlefield is drawn from two buffers in TT-RAM: a background, the
- * terrain with the trees and wrecks over it, and a composite, the background
+ * terrain with the trees and wrecks over it and the fog over what is
+ * unexplored, and a composite, the background
  * with this frame's moving things. Both are rings the size of the view: the
  * battlefield's 16-pixel group g and row y (as on screen) are kept at group
  * g mod RING_G and row y mod RING_H, so when the view moves only the strips
@@ -643,9 +646,136 @@ typedef struct {
     int dx, dy;
 } Piece;
 
+/* ------------------------------------------------------------ the explored map */
+
+/* The missions start unmapped: ground no unit of the player's has seen is
+ * black, on the battlefield and the minimap. explored[] holds a byte a
+ * 32x32 sight cell of the map as drawn (x, and y on screen). After each tick
+ * a unit that came into a new cell explores the disc of its sight. The
+ * black's edges are the demo's fog tiles (common.fog): tile tx, ty lies at
+ * 32 * tx + 16, 32 * ty + 16, across the corners of four sight cells, so a
+ * cell uncovered changes the four tiles over it, and the background draws
+ * those again. */
+#define EX_MAX 96          /* sight cells across and down the largest map; a row's stride */
+#define EX_SHIFT 5         /* a sight cell is 32 pixels */
+#define EX_NONE 0xFF
+#define FOG_W (EX_MAX + 4) /* fog_dirty's stride: tiles -1 to EX_MAX - 1, and room */
+static uint8_t explored[EX_MAX * EX_MAX] __attribute__((aligned(4)));
+static int ex_w, ex_h;
+static uint8_t ex_x[MAX_UNITS], ex_y[MAX_UNITS]; /* the cell a unit last explored from (y on screen) */
+static uint8_t ex_z[MAX_UNITS];                  /* and its z cell, to tell when it has moved */
+static uint8_t fog_dirty[(EX_MAX + 1) * FOG_W];  /* tiles to draw again, tile tx, ty at ty + 1, tx + 1 */
+static int fog_t0, fog_t1;                       /* the rows of fog_dirty in use */
+static int fog_all;                              /* the whole view to draw again */
+static uint8_t mini_dirty[EX_MAX];               /* cell rows the minimap has still to show */
+static int mini_any;
+
+static int explored_at(int x, int y) {
+    int cx = x >> EX_SHIFT, cy = y >> EX_SHIFT;
+    return cx < 0 || cy < 0 || cx >= ex_w || cy >= ex_h || explored[cy * EX_MAX + cx];
+}
+
+/* Whether a unit is shown: the player's always; an enemy where the sim's
+ * sight saw it (a building, where it was last seen), on explored ground */
+static int unit_shown(const Unit* u) {
+    return u->owner == PLAYER ||
+           ((u->flags & (UF_SEEN | UF_WAS_SEEN)) && explored_at(u->x >> FIX, unit_screen_y(u)));
+}
+
+/* Explores cells c0..c1 of row r, and notes the fog tiles and minimap rows
+ * over those it uncovers */
+static void explore_row(int r, int c0, int c1) {
+    uint8_t* e = explored + r * EX_MAX;
+    int c = c0;
+    for (;;) {
+        int start;
+        /* past what is explored: four cells at a time where they line up */
+        while (c <= c1) {
+            if (!(c & 3) && c + 3 <= c1 && *(const uint32_t*)(e + c) == 0x01010101UL) {
+                c += 4;
+                continue;
+            }
+            if (!e[c])
+                break;
+            c++;
+        }
+        if (c > c1)
+            break;
+        start = c;
+        while (c <= c1 && !e[c])
+            e[c++] = 1;
+        /* tiles start - 1..c - 1 in tile rows r - 1 and r */
+        memset(fog_dirty + r * FOG_W + start, 1, (size_t)(c - start + 1));
+        memset(fog_dirty + (r + 1) * FOG_W + start, 1, (size_t)(c - start + 1));
+        if (r < fog_t0)
+            fog_t0 = r;
+        if (r + 1 > fog_t1)
+            fog_t1 = r + 1;
+        mini_dirty[r] = 1;
+        mini_any = 1;
+    }
+}
+
+/* Each of the player's units that came into a new cell explores the disc of
+ * its sight. Everything in the disc it explored last time is explored
+ * already, so a row is looked at only beyond that disc. */
+static void explore(void) {
+    int i;
+    for (i = 0; i < unit_hi; i++) {
+        const Unit* u = &units[i];
+        const uint8_t* wt;
+        int cx, cz, cy, ox = ex_x[i], oy, r, d;
+        if (!u->alive || u->owner != PLAYER || (u->flags & UF_UNBUILT)) {
+            ex_x[i] = EX_NONE;
+            continue;
+        }
+        cx = (u->x >> FIX) >> EX_SHIFT;
+        cz = (u->z >> FIX) >> EX_SHIFT;
+        if (cx == ox && cz == ex_z[i])
+            continue;
+        cy = unit_screen_y(u) >> EX_SHIFT;
+        if (cx < 0 || cy < 0 || cx >= ex_w || cy >= ex_h || cz < 0 || cz > 254)
+            continue;
+        oy = ex_y[i];
+        ex_x[i] = (uint8_t)cx;
+        ex_z[i] = (uint8_t)cz;
+        ex_y[i] = (uint8_t)cy;
+        r = unittypes[u->type].sight >> EX_SHIFT;
+        if (r > 31)
+            r = 31;
+        wt = disc_widths(r);
+        for (d = -r; d <= r; d++) {
+            int y = cy + d, w = wt[d < 0 ? -d : d], x0, x1, od = y - oy;
+            if (y < 0 || y >= ex_h)
+                continue;
+            x0 = cx - w < 0 ? 0 : cx - w;
+            x1 = cx + w >= ex_w ? ex_w - 1 : cx + w;
+            if (ox != EX_NONE && od >= -r && od <= r) {
+                /* the old disc's part of the row is explored */
+                int ow = wt[od < 0 ? -od : od], o0 = ox - ow, o1 = ox + ow;
+                if (o0 <= x1 && o1 >= x0) {
+                    if (x0 < o0)
+                        explore_row(y, x0, o0 - 1);
+                    if (x1 > o1)
+                        explore_row(y, o1 + 1, x1);
+                    continue;
+                }
+            }
+            explore_row(y, x0, x1);
+        }
+    }
+}
+
+void game_explore_all(void) {
+    memset(explored, 1, sizeof explored);
+    memset(mini_dirty, 1, sizeof mini_dirty);
+    mini_any = 1;
+    fog_all = 1;
+}
+
 static Screen screens[NSCREENS];
 static Screen* S;
-static uint8_t* bg;   /* terrain and features of the view */
+static uint8_t* bg;   /* terrain, features and fog of the view */
 static uint8_t* comp; /* bg with this frame's moving things */
 static int ring_g0 = -100000, ring_y0; /* the rings hold groups ring_g0.. and rows ring_y0.. */
 static Piece pieces[4];
@@ -835,6 +965,47 @@ static void sort_features(void) {
 #define FEAT_UP 96
 #define FEAT_DOWN 16
 
+/* Lays the fog over rows ya..yb (of one 16-pixel cell row gy) of a piece,
+ * cells gx0..gx1. A 16-pixel cell gx, gy is one quarter of fog tile
+ * (gx - 1) / 2, (gy - 1) / 2; past the map's edges, the nearest sight cell
+ * on it stands in. */
+static void fog_rows(const Piece* p, int gy, int ya, int yb, int gx0, int gx1) {
+    int tj = (gy - 1) >> 1, qy = (gy - 1) & 1, gx, r0 = tj, r1 = tj + 1;
+    const uint8_t *e0, *e1;
+    if (r0 < 0)
+        r0 = 0;
+    if (r0 >= ex_h)
+        r0 = ex_h - 1;
+    if (r1 >= ex_h)
+        r1 = ex_h - 1;
+    e0 = explored + r0 * EX_MAX;
+    e1 = explored + r1 * EX_MAX;
+    for (gx = gx0; gx <= gx1; gx++) {
+        int ti = (gx - 1) >> 1, a = ti < 0 ? 0 : ti >= ex_w ? ex_w - 1 : ti, b = ti + 1 >= ex_w ? ex_w - 1 : ti + 1;
+        int pat = (e0[a] ? 0 : 1) | (e0[b] ? 0 : 2) | (e1[a] ? 0 : 4) | (e1[b] ? 0 : 8), y;
+        const uint16_t* keep;
+        uint16_t* w;
+        if (!pat)
+            continue;
+        w = (uint16_t*)(bg + (ya + p->dy) * RING_STRIDE + ((gx * 16 + p->dx) >> 4) * 8);
+        if (pat == 15) {
+            for (y = ya; y <= yb; y++, w += RING_STRIDE / 2) {
+                ((uint32_t*)w)[0] = 0;
+                ((uint32_t*)w)[1] = 0;
+            }
+            continue;
+        }
+        keep = common.fog + ((((ti * 7 + tj * 13) & 3) * 16 + pat) * 4 + qy * 2 + ((gx - 1) & 1)) * 16;
+        for (y = ya; y <= yb; y++, w += RING_STRIDE / 2) {
+            uint16_t k = keep[y & 15];
+            w[0] &= k;
+            w[1] &= k;
+            w[2] &= k;
+            w[3] &= k;
+        }
+    }
+}
+
 /* Draws one piece's part of the background: battlefield x0..x1 (on group
  * edges), y0..y1, all inside the piece */
 static void bg_render_piece(const Piece* p, int x0, int y0, int x1, int y1) {
@@ -875,6 +1046,9 @@ static void bg_render_piece(const Piece* p, int x0, int y0, int x1, int y1) {
             continue;
         gfx_sprite(bg, common_sprite(common.feat[f->type].sprite), f->x + p->dx, sy + p->dy);
     }
+    /* the fog over what no unit has explored */
+    for (i = (y0 < 0 ? 0 : y0) >> 4; i <= y1 >> 4; i++)
+        fog_rows(p, i, i * 16 > y0 ? i * 16 : y0, i * 16 + 15 < y1 ? i * 16 + 15 : y1, x0 >> 4, x1 >> 4);
 }
 
 /* Draws the background's battlefield rectangle x0..x1, y0..y1, as much of it
@@ -901,32 +1075,51 @@ static void bg_render(int x0, int y0, int x1, int y1) {
     mark(x0, y0, x1, y1);
 }
 
-/* Brings the background up to date with the view and the features: draws
- * only what came into the rings, or the area round a feature that came or
- * went */
+/* Brings the background up to date with the view, the features and the
+ * explored map: draws only what came into the rings, the area round a
+ * feature that came or went, and the fog tiles over cells uncovered */
 static void bg_update(void) {
-    int g0 = camx >> 4, dg = g0 - ring_g0, dy = camy - ring_y0;
+    int g0 = camx >> 4, dg = g0 - ring_g0, dy = camy - ring_y0, t;
     int left = g0 * 16, right = (g0 + RING_G) * 16 - 1, top = camy, bottom = camy + RING_H - 1;
+    /* the features in order first, for whatever is drawn below */
+    if (bg_version != feat_version) {
+        bg_version = feat_version;
+        sort_features();
+    }
     if (dg || dy) {
         ring_g0 = g0;
         ring_y0 = camy;
         set_pieces();
-        if (dg <= -RING_G || dg >= RING_G || dy <= -RING_H || dy >= RING_H) {
-            bg_render(left, top, right, bottom);
-        } else {
-            if (dy > 0)
-                bg_render(left, bottom - dy + 1, right, bottom);
-            else if (dy < 0)
-                bg_render(left, top, right, top - dy - 1);
-            if (dg > 0)
-                bg_render((g0 + RING_G - dg) * 16, top, right, bottom);
-            else if (dg < 0)
-                bg_render(left, top, (g0 - dg) * 16 - 1, bottom);
-        }
     }
-    if (bg_version != feat_version) {
-        bg_version = feat_version;
-        sort_features();
+    if (fog_all || dg <= -RING_G || dg >= RING_G || dy <= -RING_H || dy >= RING_H) {
+        bg_render(left, top, right, bottom);
+    } else {
+        if (dy > 0)
+            bg_render(left, bottom - dy + 1, right, bottom);
+        else if (dy < 0)
+            bg_render(left, top, right, top - dy - 1);
+        if (dg > 0)
+            bg_render((g0 + RING_G - dg) * 16, top, right, bottom);
+        else if (dg < 0)
+            bg_render(left, top, (g0 - dg) * 16 - 1, bottom);
+        /* the fog tiles over cells uncovered: a run of them at a time */
+        for (t = fog_t0; t <= fog_t1; t++) {
+            const uint8_t* row = fog_dirty + t * FOG_W;
+            int y0 = t * 32 - 16, c = 0, start;
+            if (y0 + 31 < top || y0 > bottom)
+                continue;
+            for (;;) {
+                while (c < FOG_W && !row[c])
+                    c++;
+                if (c == FOG_W)
+                    break;
+                start = c;
+                while (c < FOG_W && row[c])
+                    c++;
+                if (c * 32 - 17 >= left && start * 32 - 16 <= right)
+                    bg_render(start * 32 - 16, y0, c * 32 - 17, y0 + 31);
+            }
+        }
         if (feat_dirty_x0 <= feat_dirty_x1)
             bg_render(
                 feat_dirty_x0 - FEAT_SIDE,
@@ -934,9 +1127,14 @@ static void bg_update(void) {
                 feat_dirty_x1 + FEAT_SIDE,
                 feat_dirty_y1 + FEAT_DOWN
             );
-        feat_dirty_x0 = 0;
-        feat_dirty_x1 = -1;
     }
+    for (t = fog_t0; t <= fog_t1; t++)
+        memset(fog_dirty + t * FOG_W, 0, FOG_W);
+    fog_t0 = EX_MAX + 1;
+    fog_t1 = -1;
+    fog_all = 0;
+    feat_dirty_x0 = 0;
+    feat_dirty_x1 = -1;
 }
 
 /* Readies the composite: the background where last frame's things were, and
@@ -1110,7 +1308,7 @@ static int hover_unit(void) {
     static int hover;
     if (frame != game_frames) {
         frame = game_frames;
-        hover = in_view(mx(), my()) ? unit_at(mx() - VIEW_X + camx, my() - VIEW_Y + camy, 3) : -1;
+        hover = in_view(mx(), my()) ? unit_at(mx() - VIEW_X + camx, my() - VIEW_Y + camy, 3, unit_shown) : -1;
     }
     return hover;
 }
@@ -1211,17 +1409,66 @@ static uint32_t side_key(void) {
     return k;
 }
 
+/* The minimap as explored: the mission's, black where no unit has been */
+static uint16_t* mini;
+static uint8_t mini_cx[128], mini_cy[128]; /* the cell under each column and row */
+
+static void mini_start(void) {
+    int i;
+    for (i = 0; i < mission.mw && i < 128; i++)
+        mini_cx[i] = (uint8_t)(((2 * i + 1) * mapw / (2 * mission.mw)) >> EX_SHIFT);
+    for (i = 0; i < mission.mh && i < 128; i++)
+        mini_cy[i] = (uint8_t)(((2 * i + 1) * maph / (2 * mission.mh)) >> EX_SHIFT);
+    memset(mini_dirty, 1, sizeof mini_dirty);
+    mini_any = 1;
+}
+
+/* Brings the minimap's rows over the cell rows explored since up to date;
+ * rows over the same cell row share their masks */
+static void mini_update(void) {
+    int y, g, b, groups = mission.mw / 16, last = -1;
+    uint16_t m[8];
+    for (y = 0; y < mission.mh; y++) {
+        const uint16_t* s = mission.minimap + y * groups * 4;
+        uint16_t* d = mini + y * groups * 4;
+        int cy = mini_cy[y];
+        if (!mini_dirty[cy])
+            continue;
+        if (cy != last) {
+            const uint8_t* e = explored + cy * EX_MAX;
+            last = cy;
+            for (g = 0; g < groups; g++) {
+                uint16_t k = 0;
+                for (b = 0; b < 16; b++)
+                    if (e[mini_cx[g * 16 + b]])
+                        k |= (uint16_t)(0x8000 >> b);
+                m[g] = k;
+            }
+        }
+        for (g = 0; g < groups; g++, s += 4, d += 4) {
+            d[0] = s[0] & m[g];
+            d[1] = s[1] & m[g];
+            d[2] = s[2] & m[g];
+            d[3] = s[3] & m[g];
+        }
+    }
+    memset(mini_dirty, 0, sizeof mini_dirty);
+    mini_any = 0;
+}
+
 static void draw_minimap(uint8_t* scr) {
     int i;
     int ox = minimap_ox, oy = minimap_oy;
-    gfx_image(scr, mission.minimap, ox, oy, mission.mw / 16, mission.mh);
+    if (mini_any)
+        mini_update();
+    gfx_image(scr, mini, ox, oy, mission.mw / 16, mission.mh);
     gfx_clip(ox, oy, ox + mission.mw - 1, oy + mission.mh - 1);
     for (i = 0; i < unit_hi; i++) {
         const Unit* u = &units[i];
         int x, y;
         if (!u->alive)
             continue;
-        if (u->owner != PLAYER && !(u->flags & (UF_SEEN | UF_WAS_SEEN)))
+        if (!unit_shown(u))
             continue;
         x = ox + (int)((u->x >> FIX) * mission.mw / mapw);
         y = oy + (int)((u->z >> FIX) * mission.mh / maph);
@@ -1304,11 +1551,9 @@ static void draw_battlefield(void) {
         int ux, uz;
         if (!u->alive)
             continue;
-        if (u->owner != PLAYER && !(u->flags & (UF_SEEN | UF_WAS_SEEN)))
-            continue;
         ux = u->x >> FIX;
         uz = u->z >> FIX;
-        if (ux < x0 || ux > x1 || uz < y0 || uz > y1)
+        if (ux < x0 || ux > x1 || uz < y0 || uz > y1 || !unit_shown(u))
             continue;
         /* buildings sort by their back edge, so units in front of them come later */
         if (unittypes[u->type].kind != UK_MOBILE)
@@ -1340,7 +1585,7 @@ static void draw_battlefield(void) {
         int sx, sy, tx, ty;
         if (!u->alive || u->nano == -1 || (u->flags & UF_UNBUILT))
             continue;
-        if (u->owner != PLAYER && !(u->flags & UF_SEEN))
+        if (u->owner != PLAYER && !((u->flags & UF_SEEN) && unit_shown(u)))
             continue;
         sx = u->x >> FIX;
         sy = unit_screen_y(u) - unittypes[u->type].top / 2;
@@ -1488,9 +1733,9 @@ static void draw_cursor(uint8_t* scr) {
             c = CUR_RECLAIM;
         else if (mode == M_BUILD)
             c = CUR_NORMAL;
-        else if (unit_at(wx, wy, 1 << PLAYER) >= 0)
+        else if (unit_at(wx, wy, 1 << PLAYER, unit_shown) >= 0)
             c = CUR_SELECT;
-        else if (nselected && unit_at(wx, wy, 1 << ENEMY) >= 0 && selected(SEL_ARMED, 0))
+        else if (nselected && unit_at(wx, wy, 1 << ENEMY, unit_shown) >= 0 && selected(SEL_ARMED, 0))
             c = CUR_ATTACK;
         else if (nselected && selected(SEL_MOBILE, 0))
             c = CUR_MOVE;
@@ -1535,17 +1780,26 @@ uint32_t stage_hz[7];
 /* Checks: group rows of the composite that differ from the background outside
  * this frame's marks, and group rows of the front screen that differ from the
  * view the composite holds */
-void game_check_layers(void) {
-    int y, c, bad_comp = 0, bad_scr = 0, first_c = -1, first_s = -1;
-    uint32_t want[VIEW_COLS * 2];
+/* Counts the group rows where two rings differ, leaving out this frame's
+ * marked cells when asked; first gets the first, as row * 1000 + column */
+static int ring_diff(const uint8_t* a, const uint8_t* b, int skip_marked, int* first) {
+    int y, c, n = 0;
+    *first = -1;
     for (y = 0; y < RING_H; y++)
         for (c = 0; c < RING_G; c++)
-            if (!marks[mark_cur][y >> 4][c] &&
-                memcmp(comp + y * RING_STRIDE + c * 8, bg + y * RING_STRIDE + c * 8, 8)) {
-                if (first_c < 0)
-                    first_c = y * 1000 + c;
-                bad_comp++;
+            if (!(skip_marked && marks[mark_cur][y >> 4][c]) &&
+                memcmp(a + y * RING_STRIDE + c * 8, b + y * RING_STRIDE + c * 8, 8)) {
+                if (*first < 0)
+                    *first = y * 1000 + c;
+                n++;
             }
+    return n;
+}
+
+void game_check_layers(void) {
+    int y, c, bad_comp, bad_scr = 0, first_c, first_s = -1;
+    uint32_t want[VIEW_COLS * 2];
+    bad_comp = ring_diff(comp, bg, 1, &first_c);
     for (y = 0; y < VIEW_H; y++) {
         const uint8_t* f = tt_front + (VIEW_Y + y) * LINE_BYTES + VIEW_X / 2;
         view_row(want, comp + ring_mod(camy + y, RING_H) * RING_STRIDE, ring_mod(camx >> 4, RING_G), VIEW_COLS);
@@ -1566,6 +1820,23 @@ void game_check_layers(void) {
         first_s / 1000,
         first_s % 1000
     );
+    /* the background as kept, against the same drawn afresh */
+    {
+        uint8_t* kept = tt_alloc_any((int32_t)RING_STRIDE * RING_H);
+        int bad_bg, first_b;
+        if (!kept)
+            return;
+        memcpy(kept, bg, (size_t)RING_STRIDE * RING_H);
+        bg_render(ring_g0 * 16, ring_y0, (ring_g0 + RING_G) * 16 - 1, ring_y0 + RING_H - 1);
+        bad_bg = ring_diff(kept, bg, 0, &first_b);
+        tt_free(kept);
+        test_log(
+            "check: background differs from a fresh drawing in %d group rows (first row %d col %d)",
+            bad_bg,
+            first_b / 1000,
+            first_b % 1000
+        );
+    }
 }
 
 static void draw_frame(void) {
@@ -1842,6 +2113,14 @@ int game_run(int difficulty) {
     nselected = 0;
     minimap_ox = ((128 - mission.mw) / 2) & ~15;
     minimap_oy = (128 - mission.mh) / 2;
+    ex_w = (mission.w + 1) / 2 < EX_MAX ? (mission.w + 1) / 2 : EX_MAX;
+    ex_h = (mission.h + 1) / 2 < EX_MAX ? (mission.h + 1) / 2 : EX_MAX;
+    memset(explored, 0, sizeof explored);
+    memset(ex_x, EX_NONE, sizeof ex_x);
+    memset(fog_dirty, 0, sizeof fog_dirty);
+    fog_t0 = EX_MAX + 1;
+    fog_t1 = -1;
+    explore(); /* what the units see from the start; the first frame draws it all */
     game_frames = 0;
     game_draw_hz = game_sim_hz = 0;
     game_ticks_run = 0;
@@ -1862,7 +2141,9 @@ int game_run(int difficulty) {
         bg = tt_alloc_any((int32_t)RING_STRIDE * RING_H);
         comp = tt_alloc_any((int32_t)RING_STRIDE * RING_H);
         ui = tt_alloc_any(SCREEN_BYTES);
+        mini = tt_alloc_any(128 / 16 * 8 * 128);
     }
+    mini_start();
     memcpy(ui, common.panel, SCREEN_BYTES);
     side_serial = bar_serial = mini_serial = 0;
     ui_mini_frame = -100;
@@ -1896,6 +2177,7 @@ int game_run(int difficulty) {
         if (game_fast) {
             if (!paused && !sim_result) {
                 sim_tick();
+                explore();
                 game_ticks_run++;
             }
         } else {
@@ -1908,6 +2190,7 @@ int game_run(int difficulty) {
                 acc -= 40;
                 if (!paused && !sim_result) {
                     sim_tick();
+                    explore();
                     game_ticks_run++;
                 }
                 ticks++;

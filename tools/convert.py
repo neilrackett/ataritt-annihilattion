@@ -10,7 +10,7 @@ receives the files the TT program reads, all big-endian:
 
   UNITS.DAT   weapon and unit tables, and every unit's sprites
   COMMON.DAT  the battle palette, the panel picture, features, effects,
-              cursors, unit pictures, buttons and the font
+              cursors, unit pictures, buttons, the font and the fog's edges
   MISS1.DAT.. each mission's map, metal, objectives and placed units
   SOUNDS.DAT  sound effects, signed 8-bit at 12517 Hz
   BRIEF1.SND  each mission's spoken briefing, signed 8-bit at 12517 Hz
@@ -621,6 +621,43 @@ def write_common(out, game_pal, mapper, unit_names, feat_defs, fnames):
         glyphs += be('bbbb', w, h, x, y - base) + rows.astype('>u2').tobytes()
     font_ofs = bank.add(be('HH', base + 2, 0) + b''.join(be('H', o) for o in gofs) + bytes(glyphs))
 
+    # -- the fog over what is unexplored: fog.gaf's edge tiles. A tile is
+    # 32x32 and lies across the corner of four 32-pixel sight cells, a
+    # quarter on each; frame n of a set blacks out the quarters in the bits
+    # of n + 1 (1 top left, 2 top right, 4 bottom left, 8 bottom right) with
+    # an uneven edge. Black is solid; gray, a little larger, a fringe of
+    # every other pixel. For each of the four sets, each of the 16
+    # patterns, each quarter and each of its rows: the pixels left drawn.
+    fog = gaf('fog')
+    yy, xx = np.mgrid[0:32, 0:32]
+    every_other = ((xx + yy) & 1) == 0
+
+    def fog_mask(fr):
+        w, h, x, y, pix, tr = fr
+        a = np.array(pix, np.uint8).reshape(h, w) != tr
+        m = np.zeros((32, 32), bool)
+        ys, xs = np.nonzero(a)
+        X, Y = xs - x, ys - y
+        ok = (X >= 0) & (X < 32) & (Y >= 0) & (Y < 32)
+        m[Y[ok], X[ok]] = True
+        return m
+
+    fog_words = bytearray()
+    for v in range(1, 5):
+        for pat in range(16):
+            if pat == 0:
+                dark = np.zeros((32, 32), bool)
+            elif pat == 15:
+                dark = np.ones((32, 32), bool)
+            else:
+                black = fog_mask(fog['black%d' % v][pat - 1])
+                dark = black | (fog_mask(fog['gray%d' % v][pat - 1]) & every_other)
+            for qy in range(2):
+                for qx in range(2):
+                    q = ~dark[qy * 16:qy * 16 + 16, qx * 16:qx * 16 + 16]
+                    fog_words += (q @ BITS).astype('>u2').tobytes()
+    fog_ofs = bank.add(bytes(fog_words))
+
     # -- victory, defeat and paused titles
     ig = gaf('igtitles')
     trecs = []
@@ -628,8 +665,9 @@ def write_common(out, game_pal, mapper, unit_names, feat_defs, fnames):
         img, ox, oy = gaf_rgba(ig[t][0], pal)
         trecs.append(be('I', bank.add(rgba_sprite(img, 0, 0, mapper))))
 
-    head = (b'OAC1' + b''.join(be('H', tt_word(c)) for c in game_pal) +
-            be('IHHHHHHI', panel_ofs, len(fnames), len(arecs), len(crecs), len(prec), len(brecs), len(trecs), font_ofs))
+    head = (b'OAC2' + b''.join(be('H', tt_word(c)) for c in game_pal) +
+            be('IHHHHHHII', panel_ofs, len(fnames), len(arecs), len(crecs), len(prec), len(brecs), len(trecs), font_ofs,
+               fog_ofs))
     body = head + b''.join(frecs) + b''.join(arecs) + b''.join(crecs) + b''.join(prec) + b''.join(brecs) + b''.join(trecs)
     while len(body) & 3:
         body += b'\0'

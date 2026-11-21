@@ -12,7 +12,7 @@ big-endian for the 68030:
 | File | What it holds |
 | --- | --- |
 | `UNITS.DAT` | the weapon and unit tables, and every unit's sprites |
-| `COMMON.DAT` | the battle palette, the panels, features, effects, cursors, unit pictures, buttons and the font |
+| `COMMON.DAT` | the battle palette, the panels, features, effects, cursors, unit pictures, buttons, the font and the fog's edges |
 | `MISS1.DAT` to `MISS3.DAT` | each mission's map tiles, heights, metal, objectives, scripts and placed units |
 | `SOUNDS.DAT` | the sound effects, signed 8-bit |
 | `BRIEF1.SND`, `BRIEF1.TXT` ... | each briefing's narration at 12517 Hz and its text |
@@ -33,7 +33,7 @@ art go to `build/previews` for checking.
 | `src/gfx.c`, `src/gfx.h` | drawing on 4-plane screens: terrain tiles, masked sprites, the nanolathe frame, lines, text |
 | `src/data.c`, `src/data.h` | loading the converted data; its layouts match `tools/convert.py` |
 | `src/sim.c`, `src/sim.h` | the battle: units, orders, paths, weapons, building, metal and energy, scripts, the computer player, objectives |
-| `src/game.c`, `src/game.h` | a mission on screen: the background and composite buffers, the panels, the mouse and keys |
+| `src/game.c`, `src/game.h` | a mission on screen: the background and composite buffers, the explored map, the panels, the mouse and keys |
 | `src/main.c` | the menus, briefings and loading screens, and the scripted test driver |
 | `src/snd.c`, `src/snd.h` | sound effects, and the narration streamed through a ring in ST-RAM |
 

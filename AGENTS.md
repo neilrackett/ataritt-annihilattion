@@ -119,6 +119,13 @@ stage's share; `fps1`, `fps3`, `scroll` and `battle` are the ones to watch.
   at 12517 Hz, so it loads into TT-RAM and `snd_stream()` plays it through a
   64 KB ring in ST-RAM. The briefing's loop calls `snd_stream_update()`,
   which refills the half that isn't playing.
+- **The explored map.** It is kept in 32x32 sight cells, and the fog tiles
+  lie 16 pixels off them, so each 16x16 group cell is one quarter of a tile
+  and the masks stay on whole groups. Explore after each `sim_tick()`, not
+  each frame, so that the fog doesn't depend on the frame rate. Whether an
+  enemy shows is `unit_shown()`, for drawing and picking alike. The `check`
+  command compares the background with a fresh drawing, which catches a
+  missed redraw.
 - **Per-call costs add up.** A function call, a modulo or a division per
   row or per group cost more than the work. Step pointers instead, and wrap
   ring columns with `& (RING_G - 1)`.

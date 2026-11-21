@@ -428,24 +428,43 @@ static void bucket_range(int x, int z, int r, int* x0, int* x1, int* z0, int* z1
         *z1 = bh - 1;
 }
 
+const uint8_t* disc_widths(int r) {
+    static uint8_t widths[32][32];
+    static uint32_t made;
+    if (r > 31)
+        r = 31;
+    if (!(made & (1UL << r))) {
+        int w = r, d;
+        for (d = 0; d <= r; d++) {
+            while (w * w > r * r + r - d * d)
+                w--;
+            widths[r][d] = (uint8_t)w;
+        }
+        made |= 1UL << r;
+    }
+    return widths[r];
+}
+
 /* A player's unit sees the buckets within its sight: a disc, a row at a time */
 static void update_sight(void) {
     int i;
     memset(seen, 0, (size_t)(bw * bh));
     for (i = 0; i < unit_hi; i++) {
         Unit* u = &units[i];
+        const uint8_t* wt;
         int bx, bz, r, dz;
         if (!u->alive || u->owner != PLAYER || (u->flags & UF_UNBUILT))
             continue;
         r = (unittypes[u->type].sight + BUCKET / 2) / BUCKET;
+        if (r > 31)
+            r = 31;
+        wt = disc_widths(r);
         bx = (u->x >> FIX) / BUCKET;
         bz = (u->z >> FIX) / BUCKET;
         for (dz = -r; dz <= r; dz++) {
-            int z = bz + dz, w = r, reach = r * r + r - dz * dz, x0, x1;
+            int z = bz + dz, w = wt[dz < 0 ? -dz : dz], x0, x1;
             if (z < 0 || z >= bh)
                 continue;
-            while (w * w > reach)
-                w--;
             x0 = bx - w < 0 ? 0 : bx - w;
             x1 = bx + w >= bw ? bw - 1 : bx + w;
             if (x0 <= x1)
@@ -1840,7 +1859,7 @@ void sim_tick(void) {
 
 /* ------------------------------------------------------------ picking */
 
-int unit_at(int x, int sy, int owner_mask) {
+int unit_at(int x, int sy, int owner_mask, int (*shown)(const Unit*)) {
     int i, best = -1, bestd = 1 << 30;
     for (i = 0; i < unit_hi; i++) {
         const Unit* u = &units[i];
@@ -1848,12 +1867,12 @@ int unit_at(int x, int sy, int owner_mask) {
         int ux, uy, r, d;
         if (!u->alive || !(owner_mask & (1 << u->owner)))
             continue;
-        if (u->owner != PLAYER && !(u->flags & (UF_SEEN | UF_WAS_SEEN)))
-            continue;
         t = &unittypes[u->type];
         ux = u->x >> FIX;
         /* far from the point: no need for its height or a square root */
         if (ux < x - 80 || ux > x + 80 || (u->z >> FIX) < sy - 80 || (u->z >> FIX) > sy + 140)
+            continue;
+        if (!shown(u))
             continue;
         uy = unit_screen_y(u) - t->top / 2;
         r = t->radius + 2;

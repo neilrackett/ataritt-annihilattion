@@ -11,8 +11,9 @@
 #include "data.h"
 #include "tt.h"
 
-/* A stream plays through a ring in ST-RAM of two halves: while DMA sound
- * plays one, the other is filled with what comes next */
+/* A stream plays at 12517 Hz through a ring in ST-RAM of two halves: while
+ * DMA sound plays one, the other is filled with what comes next. Sample
+ * stream_next goes into half (stream_next / HALF) & 1. */
 #define HALF 32768L
 
 int snd_enabled = 1;
@@ -21,7 +22,6 @@ static uint32_t last_start;
 static int8_t* ring;
 static const int8_t* stream;
 static int32_t stream_len, stream_next;
-static int filling; /* the half to fill once DMA sound plays the other */
 
 void snd_play(int id, int prio) {
     if (!snd_enabled || id < 0 || id >= sounds.n || !sounds.data)
@@ -36,8 +36,9 @@ void snd_play(int id, int prio) {
     tt_sound_play(sounds.data + sounds.ofs[id], (int32_t)sounds.len[id], sounds.rate[id]);
 }
 
-/* Fills a half of the ring with what comes next, or silence */
-static void fill_half(int8_t* d) {
+/* Fills the next half of the ring with what comes next, or silence */
+static void fill_half(void) {
+    int8_t* d = ring + ((stream_next / HALF) & 1) * HALF;
     int32_t n = stream_len - stream_next;
     if (n < 0)
         n = 0;
@@ -48,18 +49,17 @@ static void fill_half(int8_t* d) {
     stream_next += HALF;
 }
 
-void snd_stream(const int8_t* data, int32_t len, int rate) {
+void snd_stream(const int8_t* data, int32_t len) {
     snd_stop();
     if (!snd_enabled || !(ring = tt_alloc_st(2 * HALF)))
         return;
     stream = data;
     stream_len = len;
     stream_next = 0;
-    fill_half(ring);
-    fill_half(ring + HALF);
-    filling = 0;
+    fill_half();
+    fill_half();
     cur_prio = 9;
-    tt_sound_loop(ring, 2 * HALF, rate);
+    tt_sound_loop(ring, 2 * HALF, 1);
 }
 
 void snd_stream_update(void) {
@@ -67,7 +67,7 @@ void snd_stream_update(void) {
     if (!ring)
         return;
     playing = tt_sound_pos() >= ring + HALF;
-    if (playing == filling)
+    if (playing == ((stream_next / HALF) & 1))
         return;
     /* the half playing holds what comes before stream_next: silence once
      * that is past the end */
@@ -75,8 +75,7 @@ void snd_stream_update(void) {
         snd_stop();
         return;
     }
-    fill_half(ring + filling * HALF);
-    filling ^= 1;
+    fill_half();
 }
 
 void snd_stop(void) {

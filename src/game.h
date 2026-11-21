@@ -56,6 +56,10 @@ void game_camera(int x, int z);
 /// @param on whether to follow
 void game_follow(int on);
 
+/// Uncovers the whole map, as if every part of it had been seen (test
+/// scripts, to look at the map).
+void game_explore_all(void);
+
 /// Writes to the test log up to 8 features in view, with their places on
 /// screen and what reclaiming them gives.
 void game_list_features(void);

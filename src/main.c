@@ -227,6 +227,8 @@ static int test_next(void) {
             game_camera(a, b);
         } else if (!strcmp(word, "follow")) {
             game_follow(sscanf(line + 6, "%d", &a) == 1 ? a : 1);
+        } else if (!strcmp(word, "explore")) {
+            game_explore_all();
         } else if (!strcmp(word, "res")) {
             for (a = 0; a < 2; a++)
                 test_log(
@@ -524,7 +526,7 @@ static int briefing(int m) {
     if (pic)
         tt_set_palette(pal);
     if (voice)
-        snd_stream(voice, vlen, 1);
+        snd_stream(voice, vlen);
     for (;;) {
         uint16_t k;
         int x, y, click;

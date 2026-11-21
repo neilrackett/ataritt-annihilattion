@@ -241,13 +241,21 @@ int snap_build_x(int type, int x);
 int snap_build_z(int type, int z);
 
 /// Finds the unit drawn under a point, nearest first; a mobile unit before
-/// a building, and an enemy only where it is or was seen.
+/// a building, of the units the screen shows.
 ///
 /// @param x the point's battlefield x, pixels
 /// @param sy the point's battlefield y on screen, pixels
 /// @param owner_mask bit 0 the player's units, bit 1 the computer's
+/// @param shown whether the screen shows a unit
 /// @return the unit, or -1
-int unit_at(int x, int sy, int owner_mask);
+int unit_at(int x, int sy, int owner_mask, int (*shown)(const Unit*));
+
+/// Gives the half-widths of a disc of cells, row by row: the disc that sight
+/// covers, in the sim's buckets and the explored map's cells alike.
+///
+/// @param r the disc's radius in cells, at most 31
+/// @return for each row d from the centre, 0 to r, the cells either side
+const uint8_t* disc_widths(int r);
 
 /// Finds the reclaimable feature drawn nearest a point, within 24 pixels.
 ///

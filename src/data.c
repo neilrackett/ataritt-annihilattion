@@ -104,10 +104,10 @@ int load_common(void) {
     uint8_t* f = load_file("COMMON.DAT", 0, 0, 0);
     const uint8_t* p;
     int i, j, ncur, npic, nbtn, ntit;
-    uint32_t panel, font;
+    uint32_t panel, font, fog;
     if (!f)
         return 0;
-    if (memcmp(f, "OAC1", 4)) {
+    if (memcmp(f, "OAC2", 4)) {
         strcpy(err, "can't use COMMON.DAT from another version");
         return 0;
     }
@@ -122,7 +122,8 @@ int load_common(void) {
     nbtn = rd16(p + 12);
     ntit = rd16(p + 14);
     font = rd32(p + 16);
-    p += 20;
+    fog = rd32(p + 20);
+    p += 24;
     if (ncur != CUR_COUNT || nbtn != BTN_COUNT || ntit != TITLE_COUNT) {
         strcpy(err, "can't use COMMON.DAT from another version");
         return 0;
@@ -151,6 +152,7 @@ int load_common(void) {
     common.bank = p + 4;
     common.panel = (const uint16_t*)(common.bank + panel);
     common.font = common.bank + font;
+    common.fog = (const uint16_t*)(common.bank + fog);
     return 1;
 }
 

@@ -22,7 +22,8 @@
   minimap, BUILD and ORDERS pages and the unit pictures, the metal and energy
   bars at the top, the unit bar at the bottom; the game's fonts, cursors,
   buttons and menu pictures; line of sight (CORE units show only where yours
-  can see).
+  can see), and the map black, on the battlefield and the minimap, until
+  your units have explored it.
 
 ## What it leaves out
 

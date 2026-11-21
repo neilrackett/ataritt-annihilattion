@@ -152,6 +152,11 @@ typedef struct {
     uint32_t button[BTN_COUNT][6];
     uint32_t title[TITLE_COUNT];
     const uint8_t* font;
+    /* the fog's edges: for each of 4 sets of tiles, each pattern of
+     * unexplored quarters (1 top left, 2 top right, 4 bottom left, 8 bottom
+     * right), each quarter (top left, top right, bottom left, bottom right)
+     * and each of its 16 rows, the pixels left drawn */
+    const uint16_t* fog;
     const uint8_t* bank;
 } Common;
 

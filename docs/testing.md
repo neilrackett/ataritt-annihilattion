@@ -24,9 +24,10 @@ then gives one command a line:
 | `mouse X Y BUTTONS`, `key SCAN ASCII` | the pointer and buttons, or a key (hex) |
 | `camera X Z` | looks at a place on the battlefield |
 | `follow`, `follow 0` | scrolls the view after the Commander from now on, as scrolling at the screen's edges does; or stops |
+| `explore` | uncovers the whole map, as if every part of it had been seen |
 | `shot NAME` | a screenshot |
 | `stats`, `units`, `res`, `proj`, `feat` | logs the timings, the units, both players' resources, the shots in flight, or the features in view |
-| `check` | logs where the screen differs from the buffers it is drawn from |
+| `check` | logs where the screen differs from the buffers it is drawn from, and where the background differs from the same drawn afresh |
 | `debug UNIT` | logs a unit's movement and path |
 | `kill TYPE`, `teleport UNIT X Z` | destroys every CORE unit of a type, or moves a unit |
 | `result` | logs whether the mission is won or lost |

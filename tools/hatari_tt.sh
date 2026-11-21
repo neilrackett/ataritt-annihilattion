@@ -9,19 +9,18 @@
 # caches. With MACHINE=falcon they are a 14 MB Falcon's on a VGA monitor
 # instead, running EmuTOS: the Falcon is an experiment (see the README).
 #
-# Environment: MACHINE (tt, the default, or falcon), TOS (default: the TOS
-# 3.06 image of the ataritt-doom checkout beside this one; for a Falcon,
-# EmuTOS 512K from the atarist-stdl checkout), HATARI (default: hatari on
-# the PATH, else the Mac app).
+# Environment: MACHINE (tt, the default, or falcon), TOS (default:
+# "tmp/tos/TOS 3.06 - UK.img"; for a Falcon, "tmp/tos/EmuTOS 1.4 - UK -
+# 512K.img"), HATARI (default: hatari on the PATH, else the Mac app).
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 REPO=$HERE
 GAME=$REPO/dist
 HATARI=${HATARI:-$(command -v hatari || echo /Applications/Hatari.app/Contents/MacOS/hatari)}
 if [ "${MACHINE:-tt}" = falcon ]; then
-  TOS=${TOS:-$REPO/../atarist-stdl/tmp/tos/etos512uk.img}
+  TOS=${TOS:-$REPO/tmp/tos/EmuTOS 1.4 - UK - 512K.img}
   MACHINE_FLAGS=(--machine falcon --fpu none --memsize 14)
 else
-  TOS=${TOS:-$REPO/../ataritt-doom/tmp/tos/tos306uk.img}
+  TOS=${TOS:-$REPO/tmp/tos/TOS 3.06 - UK.img}
   MACHINE_FLAGS=(--machine tt --memsize 2 --ttram 4 --addr24 off)
 fi
 [ -f "$TOS" ] || { echo "No TOS image at $TOS: set TOS to one (docs/building.md)." >&2; exit 1; }

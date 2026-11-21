@@ -66,6 +66,12 @@ plays is still converted on your own computer by `build.sh`.
 
 `make play` and `make test` run on the computer itself, not through `stcmd`,
 as Hatari does; `MACHINE=falcon` runs either as a [Falcon](falcon.md).
-Hatari needs a TOS image: by default TOS 3.06 from an `ataritt-doom` checkout
-beside this one, and EmuTOS from an `atarist-stdl` checkout for the Falcon;
-`TOS` names another.
+Hatari needs a TOS image in `tmp/tos`, which Git ignores:
+
+| Machine | Image | Where from |
+| --- | --- | --- |
+| TT | `TOS 3.06 - UK.img` | Atari's TOS 3.06, read from your own TT's ROMs |
+| Falcon | `EmuTOS 1.4 - UK - 512K.img` | `etos512uk.img` from [EmuTOS](https://emutos.sourceforge.io)'s 512K release, renamed |
+
+`TOS` names any other image instead. Without TOS 3.06, the EmuTOS image runs
+the TT too: `TOS="$PWD/tmp/tos/EmuTOS 1.4 - UK - 512K.img" make test`.

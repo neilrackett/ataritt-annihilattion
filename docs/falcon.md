@@ -22,5 +22,5 @@ one part of `src/tt.c`; the rest of the game only knows that it plays no
 6258 Hz sound.
 
 `MACHINE=falcon make play` and `MACHINE=falcon make test` run it in a 14 MB
-Falcon on VGA in Hatari, with EmuTOS from an `atarist-stdl` checkout beside
-this one, or `TOS`.
+Falcon on VGA in Hatari, with EmuTOS (`tmp/tos/EmuTOS 1.4 - UK - 512K.img`),
+or `TOS`.

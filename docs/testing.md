@@ -2,8 +2,8 @@
 
 `make test TEST=tests/SCRIPT.txt` builds, then runs
 `tools/test_hatari.sh SCRIPT tests/SCRIPT.txt`. That runs `ANNIHILA.TOS`
-headless in Hatari as the target TT (TOS 3.06, taken from an `ataritt-doom`
-checkout beside this one, or from `TOS`), fast-forwarded, with the script as
+headless in Hatari as the target TT (with the TOS image in `tmp/tos`, or
+`TOS`; see [Building](building.md#make)), fast-forwarded, with the script as
 `OATEST.TXT`. The run's folder is `tmp/runs/SCRIPT` (or `NAME`): the
 program's log is `OALOG.TXT` there, and every shot the script took is a PNG.
 

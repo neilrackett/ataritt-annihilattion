@@ -24,5 +24,6 @@ else
   TOS=${TOS:-$REPO/../ataritt-doom/tmp/tos/tos306uk.img}
   MACHINE_FLAGS=(--machine tt --memsize 2 --ttram 4 --addr24 off)
 fi
+[ -f "$TOS" ] || { echo "No TOS image at $TOS: set TOS to one (docs/building.md)." >&2; exit 1; }
 HATARI_FLAGS=(--tos "$TOS" "${MACHINE_FLAGS[@]}" --mmu off --monitor vga --cpu-exact on
   --data-cache on --fast-boot on --confirm-quit false)

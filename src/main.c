@@ -225,6 +225,8 @@ static int test_next(void) {
         } else if (!strcmp(word, "camera")) {
             sscanf(line + 6, "%d %d", &a, &b);
             game_camera(a, b);
+        } else if (!strcmp(word, "follow")) {
+            game_follow(sscanf(line + 6, "%d", &a) == 1 ? a : 1);
         } else if (!strcmp(word, "res")) {
             for (a = 0; a < 2; a++)
                 test_log(

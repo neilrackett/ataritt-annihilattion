@@ -82,8 +82,7 @@ See [Playing](docs/playing.md) for the rest.
 
 - Created by [Neil Rackett](https://neilrackett.com/atarist)
 - Inspired by [Open Annihilation](https://github.com/open-annihilation/open-annihilation)
-  by Steve Gray and its [contributors](https://github.com/open-annihilation/open-annihilation/blob/main/CONTRIBUTORS.md),
-  where AnnihilaTTion began
+  by Steve Gray and its [contributors](https://github.com/open-annihilation/open-annihilation/blob/main/CONTRIBUTORS.md)
 - [Total Annihilation](https://en.wikipedia.org/wiki/Total_Annihilation) (1997)
   by Cavedog Entertainment, whose free demo it plays
 

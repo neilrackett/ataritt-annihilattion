@@ -50,6 +50,12 @@ void test_key(uint16_t key);
 /// @param z the point's z, pixels
 void game_camera(int x, int z);
 
+/// Makes the view scroll after the Commander, at the speed of scrolling at
+/// the screen's edges, for test scripts' recordings.
+///
+/// @param on whether to follow
+void game_follow(int on);
+
 /// Writes to the test log up to 8 features in view, with their places on
 /// screen and what reclaiming them gives.
 void game_list_features(void);

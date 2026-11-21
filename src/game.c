@@ -123,6 +123,22 @@ void game_camera(int x, int z) {
     centre_on(x, z);
 }
 
+/* The player's Commander, or -1 once it is gone */
+static int find_commander(void) {
+    int i;
+    for (i = 0; i < unit_hi; i++)
+        if (units[i].alive && units[i].owner == PLAYER &&
+            (unittypes[units[i].type].flags & UF_COMMANDER))
+            return i;
+    return -1;
+}
+
+static int following; /* the view scrolls after the Commander (test scripts) */
+
+void game_follow(int on) {
+    following = on;
+}
+
 /* The battlefield point under a screen point, z found through the ground's height */
 static void screen_to_world(int sx, int sy, int* wx, int* wz) {
     int x = sx - VIEW_X + camx, y = sy - VIEW_Y + camy, z = y, i;
@@ -1696,15 +1712,13 @@ static int handle_keys(void) {
             page = 1;
             break;
         case 'C': {
-            int i;
-            for (i = 0; i < unit_hi; i++)
-                if (units[i].alive && units[i].owner == PLAYER &&
-                    (unittypes[units[i].type].flags & UF_COMMANDER)) {
-                    deselect_all();
-                    units[i].flags |= UF_SELECTED;
-                    selection_changed();
-                    centre_on(units[i].x >> FIX, units[i].z >> FIX);
-                }
+            int i = find_commander();
+            if (i >= 0) {
+                deselect_all();
+                units[i].flags |= UF_SELECTED;
+                selection_changed();
+                centre_on(units[i].x >> FIX, units[i].z >> FIX);
+            }
             break;
         }
         case 'X':
@@ -1729,23 +1743,29 @@ static int handle_mouse(void) {
         return 0;
     /* scrolling at the screen's edges, EDGE_SPEED pixels a second however
      * fast the frames come: down by the pixel, across a group at a time once
-     * the pixels add up to one */
+     * the pixels add up to one. A test script's follow pushes the same way
+     * towards the Commander when it strays from the middle of the view. */
     {
         static uint32_t then;
         static int32_t part; /* 200ths of a pixel not yet moved */
         static int across;   /* pixels across not yet moved, as a whole group */
         uint32_t now = HZ200, dt = now - then;
-        int step;
+        int step, push_x = x <= 1 ? -1 : x >= SCREEN_W - 2, push_y = y <= 1 ? -1 : y >= SCREEN_H - 2;
+        int c = following ? find_commander() : -1;
+        if (c >= 0) {
+            int dx = (units[c].x >> FIX) - (camx + VIEW_W / 2);
+            int dy = unit_screen_y(&units[c]) - (camy + VIEW_H / 2);
+            push_x = dx > 64 ? 1 : dx < -64 ? -1 : 0;
+            push_y = dy > 48 ? 1 : dy < -48 ? -1 : 0;
+        }
         then = now;
         if (dt > 20)
             dt = 20; /* the first frame, or one after a wait: no leap */
         part += (int32_t)dt * EDGE_SPEED;
         step = (int)(part / 200);
         part %= 200;
-        if (x <= 1)
-            across -= step;
-        else if (x >= SCREEN_W - 2)
-            across += step;
+        if (push_x)
+            across += push_x * step;
         else
             across = 0;
         while (across >= 16) {
@@ -1756,10 +1776,7 @@ static int handle_mouse(void) {
             camx -= 16;
             across += 16;
         }
-        if (y <= 1)
-            camy -= step;
-        if (y >= SCREEN_H - 2)
-            camy += step;
+        camy += push_y * step;
     }
     clamp_camera();
     if (pressed & 1) {
@@ -1854,6 +1871,7 @@ int game_run(int difficulty) {
         screens[i].scr = tt_screens[i];
     /* the rings hold nothing yet: the first frame draws them whole */
     bg_version = -1;
+    following = 0;
     ring_g0 = -100000;
     ring_y0 = 0;
     set_pieces();

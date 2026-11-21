@@ -7,7 +7,7 @@
 # Runs the program headless in Hatari as the target TT (hatari_tt.sh),
 # fast-forwarded, with the converted data and TESTFILE as OATEST.TXT, until
 # the script ends or SECONDS of host time pass. The run's folder is
-# local/runs/NAME: its OALOG.TXT is the program's log, and every
+# tmp/runs/NAME: its OALOG.TXT is the program's log, and every
 # SHOT*.RAW the script took is also written as PNG.
 #
 # Environment: as hatari_tt.sh, and DATA (default: dist),
@@ -16,7 +16,7 @@ set -u
 NAME=$1; TEST=$2; SECS=${3:-300}
 . "$(dirname "$0")/hatari_tt.sh"
 DATA=${DATA:-$GAME}
-R=$REPO/local/runs/$NAME
+R=$REPO/tmp/runs/$NAME
 rm -rf "$R"; mkdir -p "$R/hd"
 # the data is linked, not copied; only the files the program reads, so that
 # nothing written in the run's folder reaches DATA through a link

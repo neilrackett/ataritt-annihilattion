@@ -24,7 +24,7 @@ The file is 21,540,864 bytes, and its SHA-256 is:
 5e41cf05226c274b4ac9e4398f74f6b321506bd7a4317ee1744ff7aceba34c49
 ```
 
-Put it in `local/ta-demo/` in this folder, or pass its path to `./build.sh`.
+Put it in `tmp/ta-demo/` in this folder, or pass its path to `./build.sh`.
 `build.sh` checks its size and SHA-256 itself, and nothing in it runs: the
 game data is read out of the installer.
 
@@ -35,7 +35,7 @@ game data is read out of the installer.
 ```
 
 1. The game data is taken out of the installer and unpacked into
-   `local/ta-demo/data` (`tools/pe_resource.py`, `tools/hpi_extract.py`),
+   `tmp/ta-demo/data` (`tools/pe_resource.py`, `tools/hpi_extract.py`),
    the first time only.
 2. The demo's data is converted for the TT (`tools/convert.py`, about a
    minute) into `dist`, with pictures of the converted art in
@@ -44,7 +44,7 @@ game data is read out of the installer.
    same folder, its objects in `build`. `dist` then holds only what the TT
    needs.
 
-`dist` and `local/` are ignored by Git: they hold the demo's data, which is
+`dist` and `tmp/` are ignored by Git: they hold the demo's data, which is
 Cavedog's.
 
 Copy the files in `dist` (about 7 MB) to a folder on the TT's hard disk,

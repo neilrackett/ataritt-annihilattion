@@ -15,6 +15,6 @@ set -eu
 . "$(dirname "$0")/hatari_tt.sh"
 [ -f "$GAME/ANNIHILA.TOS" ] || { echo "No build: run build.sh first." >&2; exit 1; }
 rm -f "$GAME/OATEST.TXT"
-CFG=$REPO/local/hatari-play.cfg
+CFG=$REPO/tmp/hatari-play.cfg
 : > "$CFG"
 exec "$HATARI" --configfile "$CFG" "${HATARI_FLAGS[@]}" --harddrive "$GAME" --auto 'C:\ANNIHILA.TOS'

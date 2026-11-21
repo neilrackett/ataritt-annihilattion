@@ -41,7 +41,7 @@ build it yourself:
 
 1. Download **Total Annihilation.exe**, the demo's installer, from the
    [Internet Archive](https://archive.org/details/TotalAnnihilation_201405)
-   and put it in `local/ta-demo/`
+   and put it in `tmp/ta-demo/`
 1. Run `./build.sh` (see [Building](docs/building.md))
 1. Copy the files in `dist` to a folder on your TT's hard disk and run
    `ANNIHILA.TOS`

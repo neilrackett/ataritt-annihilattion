@@ -8,8 +8,8 @@
 # and the converted game data.
 #
 #   1. Unpacks the Total Annihilation demo (1997) installer, "Total
-#      Annihilation.exe", into local/ta-demo/data, if that is not done yet:
-#      the installer is INSTALLER, or local/ta-demo/Total Annihilation.exe.
+#      Annihilation.exe", into tmp/ta-demo/data, if that is not done yet:
+#      the installer is INSTALLER, or tmp/ta-demo/Total Annihilation.exe.
 #      Its size and SHA-256 are checked first; nothing in it runs.
 #   2. Converts the demo's data for the TT (tools/convert.py), if the
 #      converter or the data is newer than the output.
@@ -21,7 +21,7 @@
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$HERE
-DEMO=$REPO/local/ta-demo
+DEMO=$REPO/tmp/ta-demo
 OUT=$REPO/dist
 INSTALLER=${1:-$DEMO/Total Annihilation.exe}
 SHA=5e41cf05226c274b4ac9e4398f74f6b321506bd7a4317ee1744ff7aceba34c49

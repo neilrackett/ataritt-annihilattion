@@ -7,6 +7,6 @@ dist/
 # the objects and pictures of the converted art
 build/
 # the demo's installer and game data, and test runs
-local/
+tmp/
 __pycache__/
 .DS_Store

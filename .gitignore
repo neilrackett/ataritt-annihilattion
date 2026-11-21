@@ -9,4 +9,6 @@ build/
 # the demo's installer and game data, and test runs
 tmp/
 __pycache__/
+# the web converter's packages
+node_modules/
 .DS_Store

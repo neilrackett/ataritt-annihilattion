@@ -45,3 +45,7 @@ The scripts in `tests/` cover:
 - a first look at each mission (`smoke1.txt`, `m2_look.txt`, `m3_look.txt`)
   and the memory left with the largest mission loaded (`mem.txt`)
 - speed (`fps1.txt`, `fps3.txt`, `scroll.txt`)
+
+The web converter has its own test: `pnpm test` in `web/` converts the
+installer through Pyodide and checks every file against `dist`
+([building](building.md#or-in-a-browser)).

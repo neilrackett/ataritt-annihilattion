@@ -20,12 +20,14 @@ on:
   push:
     branches:
       - main
-    # A documentation-only push cannot change the program, so it does not
-    # run (the same list as pr.yml); workflow_dispatch forces one by hand.
+    # A push of only documentation or the web converter (pages.yml
+    # publishes that) cannot change the program, so it does not run (the
+    # same list as pr.yml); workflow_dispatch forces one by hand.
     paths-ignore:
       - '**.md'
       - 'docs/**'
       - 'LICENSE'
+      - 'web/**'
   workflow_dispatch:
 
 # Two pushes in quick succession would otherwise race to replace the same

@@ -13,13 +13,15 @@ on:
   pull_request:
     branches:
       - main
-    # Documentation cannot break a build (the same list as release.yml).
+    # Documentation and the web converter (pages.yml builds that) cannot
+    # break this build (the same list as release.yml).
     # Nothing on main requires this check: if a rule ever does, these pull
     # requests would wait on it forever, so drop this filter then.
     paths-ignore:
       - '**.md'
       - 'docs/**'
       - 'LICENSE'
+      - 'web/**'
   workflow_dispatch:
 
 # Read-only: this workflow runs code from a contributor's branch, so it

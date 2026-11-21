@@ -2,7 +2,7 @@
 
 <img src="./docs/images/annihilattion.gif" alt="The Commander's march on the CORE KBot base, in TT medium resolution" width="640" height="480"/>
 
-The Total Annihilation demo for the Atari TT, by [Neil Rackett](https://neilrackett.com/atarist)
+Total Annihilation engine for the Atari TT, by [Neil Rackett](https://neilrackett.com/atarist)
 
 ## Introduction
 
@@ -33,7 +33,17 @@ the open engine for the full game, and started life inside it.
 ## Run
 
 AnnihilaTTion plays the demo's own data, which isn't included here, so you
-build it yourself:
+convert it yourself. The easiest way is in your browser:
+
+1. Download **Total Annihilation.exe**, the demo's installer, from the
+   [Internet Archive](https://archive.org/details/TotalAnnihilation_201405)
+1. Drop it on the [data converter](https://labs.neilrackett.com/ataritt-annihilattion/),
+   which gives you an `ANNIHILA` folder of the converted data
+1. Download `ANNIHILA.TOS` from [neilrackett.com](https://neilrackett.com/atarist/ataritt-annihilattion)
+   and put it in that folder
+1. Copy the folder to your TT's hard disk and run `ANNIHILA.TOS`
+
+Or build it all on a Mac or Linux:
 
 1. Download **Total Annihilation.exe**, the demo's installer, from the
    [Internet Archive](https://archive.org/details/TotalAnnihilation_201405)

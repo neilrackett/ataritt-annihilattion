@@ -227,7 +227,9 @@ def read_wav(p, rate):
         a = np.frombuffer(raw, '<i2').astype(np.float32) / 256
     a = a.reshape(-1, ch).mean(1)
     m = int(len(a) * rate / fr)
-    a = np.interp(np.arange(m) * fr / rate, np.arange(len(a)), a)
+    # positions as floats: integers would be 32-bit where numpy's are (the
+    # web converter's), and a long briefing times 22050 overflows them
+    a = np.interp(np.arange(m, dtype=np.float64) * fr / rate, np.arange(len(a)), a)
     return np.clip(np.round(a), -128, 127).astype(np.int8).tobytes()
 
 
@@ -481,8 +483,11 @@ def feature_names(units, unit_names, feat_defs, map_feature_names):
 
 def load_features():
     feats = {}
-    for root, _, files in os.walk(ta.path('features')):
-        for f in files:
+    # in name order, so that the result is the same whatever order the
+    # filesystem lists them in (the web converter's is not the Mac's)
+    for root, dirs, files in os.walk(ta.path('features')):
+        dirs.sort()
+        for f in sorted(files):
             if f.endswith('.tdf'):
                 for k, v in ta.read_tdf(os.path.join(root, f)).items():
                     feats[k] = v

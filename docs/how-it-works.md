@@ -68,3 +68,4 @@ attacks in waves.
 | `tools/play_hatari.sh` | playing the build in a Hatari window |
 | `tools/hatari_tt.sh` | the Hatari settings for the TT, and the Falcon, that both use |
 | `tests/` | test scripts for `tools/test_hatari.sh` ([testing](testing.md)) |
+| `web/` | the data converter in a web page, running `tools/*.py` in Pyodide ([building](building.md#or-in-a-browser)) |

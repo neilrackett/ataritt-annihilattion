@@ -50,6 +50,11 @@ Cavedog's.
 Copy the files in `dist` (about 7 MB) to a folder on the TT's hard disk,
 for example `C:\ANNIHILA`, and run `ANNIHILA.TOS` from it.
 
+Each push to `main` also builds `ANNIHILA.TOS` on GitHub and puts it on the
+[latest release](https://github.com/neilrackett/ataritt-annihilattion/releases/tag/latest)
+(`.github/workflows/release.yml`). That is the program alone: the data it
+plays is still converted on your own computer by `build.sh`.
+
 ## Make
 
 | Command | What it does |

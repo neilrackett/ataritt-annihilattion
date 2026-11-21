@@ -1,0 +1,95 @@
+# Copyright (C) 2026 Neil Rackett
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+name: Release
+
+# Rolling release: build ANNIHILA.TOS, replace it on the "latest" release
+# and move the lightweight "latest" tag onto the commit it was built from.
+# The release's title and notes are left as they are (`gh release upload`
+# touches assets only), and the asset's name stays the same from one build
+# to the next, so a download link handed to someone keeps working.
+#
+# Only the program is built and released. The game data it plays is the
+# Total Annihilation demo's, converted on the player's own computer by
+# build.sh, so it is never in the repository or on a release.
+
+on:
+  # Anything landing on main is a release: a merge, or a direct push.
+  # Moving the latest tag does not match a branch filter, so it cannot
+  # trigger this workflow again.
+  push:
+    branches:
+      - main
+    # A documentation-only push cannot change the program, so it does not
+    # run (the same list as pr.yml); workflow_dispatch forces one by hand.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+  workflow_dispatch:
+
+# Two pushes in quick succession would otherwise race to replace the same
+# file and move the same tag. Newest commit wins instead.
+concurrency:
+  group: release
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # The push trigger already filters to main; this is what stops a
+    # manual dispatch from some other branch releasing it.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # The toolkit image with gcc 13 (m68k-atari-mintelf) beside gcc 4.6.4,
+    # which the sidecartridge image does not carry.
+    container:
+      image: neilrackett/atarist-toolkit-docker-x86_64:mintelf
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Build ANNIHILA.TOS
+        # The Makefile's default target: dist/ANNIHILA.TOS, its objects in
+        # build/. Inside the container, so no stcmd.
+        run: make
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ANNIHILA.TOS
+          path: dist/ANNIHILA.TOS
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ANNIHILA.TOS
+
+      - name: Replace ANNIHILA.TOS on the latest release
+        run: |
+          gh release view latest --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 \
+            || gh release create latest --repo "$GITHUB_REPOSITORY" --title "AnnihilaTTion" \
+                 --notes "Rolling build of AnnihilaTTion for the Atari TT."
+          gh release upload latest ANNIHILA.TOS --clobber --repo "$GITHUB_REPOSITORY"
+
+      - name: Move the latest tag onto this commit
+        # Only after the upload, so the tag never marks a commit whose
+        # program did not make it onto the release (a cancelled or failed
+        # run leaves it where it was). Through the API rather than
+        # `git push`: pushing a tag is refused when the commit it points at
+        # touches .github/workflows and the token has no workflow scope,
+        # which is exactly the commit that adds this file. PATCH because the
+        # tag already exists; POST covers a repository where it does not.
+        run: |
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/latest" \
+            -f sha="$GITHUB_SHA" -F force=true --silent \
+            || gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" \
+                 -f ref=refs/tags/latest -f sha="$GITHUB_SHA" --silent

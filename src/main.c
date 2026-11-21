@@ -514,21 +514,21 @@ static int briefing(int m) {
     char name[24];
     int8_t* voice;
     int32_t vlen = 0;
-    int rate;
     char* text;
     uint8_t prev = (uint8_t)input_buttons();
     int result = 1;
     sprintf(name, "BRIEF%d.TXT", m + 1);
     text = load_text(name);
     sprintf(name, "BRIEF%d.SND", m + 1);
-    voice = load_voice(name, &vlen, &rate); /* none when ST-RAM is short: the text alone */
+    voice = load_voice(name, &vlen); /* none when RAM is short: the text alone */
     if (pic)
         tt_set_palette(pal);
-    if (voice && snd_enabled)
-        snd_raw(voice, vlen, rate);
+    if (voice)
+        snd_stream(voice, vlen, 1);
     for (;;) {
         uint16_t k;
         int x, y, click;
+        snd_stream_update();
         click = menu_input(&x, &y, &prev, &k);
         if (test_quit) {
             result = 0;

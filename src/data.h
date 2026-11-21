@@ -275,14 +275,13 @@ void mission_name(int n, char* name);
 /// @return the file, its planar picture 32 bytes in; free it with tt_free()
 uint8_t* load_picture(const char* name, uint16_t* pal);
 
-/// Loads a briefing's narration (BRIEFn.SND, at 6258 Hz) into ST-RAM, at a
-/// rate the machine plays: where it has no 6258 Hz, each sample twice.
+/// Loads a briefing's narration (BRIEFn.SND, signed 8-bit at 12517 Hz),
+/// into TT-RAM where there is some, for snd_stream().
 ///
 /// @param name the file
 /// @param[out] len the number of samples
-/// @param[out] rate 0 for 6258 Hz, 1 for 12517 Hz
 /// @return the samples, to free with tt_free(), or null
-int8_t* load_voice(const char* name, int32_t* len, int* rate);
+int8_t* load_voice(const char* name, int32_t* len);
 
 /// Loads a text file.
 ///

@@ -332,14 +332,6 @@ char* load_text(const char* name) {
     return t;
 }
 
-int8_t* load_voice(const char* name, int32_t* len, int* rate) {
-    int twice = !tt_plays_6258;
-    int8_t* s = (int8_t*)load_file(name, len, 1, twice);
-    *rate = 0; /* the narration is at 6258 Hz */
-    if (s && twice) {
-        double_samples(s, s + *len, *len);
-        *len *= 2;
-        *rate = 1;
-    }
-    return s;
+int8_t* load_voice(const char* name, int32_t* len) {
+    return (int8_t*)load_file(name, len, 0, 0);
 }

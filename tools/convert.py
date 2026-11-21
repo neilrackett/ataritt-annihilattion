@@ -13,7 +13,7 @@ receives the files the TT program reads, all big-endian:
               cursors, unit pictures, buttons and the font
   MISS1.DAT.. each mission's map, metal, objectives and placed units
   SOUNDS.DAT  sound effects, signed 8-bit at 12517 Hz
-  BRIEF1.SND  each mission's spoken briefing, signed 8-bit at 6258 Hz
+  BRIEF1.SND  each mission's spoken briefing, signed 8-bit at 12517 Hz
   BRIEF1.TXT..  each mission's briefing text
   TITLE.IMG, SINGLE.IMG, BRIEF.IMG, GLAM1.IMG..  full-screen pictures with
               their own palettes; GLAMn.IMG shows while mission n loads
@@ -216,16 +216,33 @@ class Sounds:
         return self.names.index(name)
 
 
+def low_pass_taps(cut, n=127):
+    """A windowed-sinc low-pass filter passing below cut (a fraction of the
+    sample rate), as integers summing to about 65536."""
+    k = np.arange(n, dtype=np.float64) - (n - 1) / 2
+    h = np.sinc(2 * cut * k) * np.kaiser(n, 8.0)
+    return np.round(h / h.sum() * 65536).astype(np.int64)
+
+
 def read_wav(p, rate):
-    """Signed 8-bit mono at rate, resampled linearly."""
+    """Signed 8-bit mono at rate: filtered first when rate is lower than the
+    file's, so that what rate can't hold doesn't fold back as hiss, then
+    resampled linearly."""
     w = wave.open(p)
     n, sw, ch, fr = w.getnframes(), w.getsampwidth(), w.getnchannels(), w.getframerate()
     raw = w.readframes(n)
+    # integers until after the filter, so that every platform sums alike
     if sw == 1:
-        a = np.frombuffer(raw, np.uint8).astype(np.float32) - 128
+        a = (np.frombuffer(raw, np.uint8).astype(np.int64) - 128) * 256
     else:
-        a = np.frombuffer(raw, '<i2').astype(np.float32) / 256
-    a = a.reshape(-1, ch).mean(1)
+        a = np.frombuffer(raw, '<i2').astype(np.int64)
+    a = a.reshape(-1, ch).sum(1)
+    scale = 256 * ch
+    if rate < fr:
+        h = low_pass_taps(0.45 * rate / fr)
+        a = np.convolve(a, h)[len(h) // 2:len(h) // 2 + len(a)]
+        scale *= int(h.sum())
+    a = a / float(scale)
     m = int(len(a) * rate / fr)
     # positions as floats: integers would be 32-bit where numpy's are (the
     # web converter's), and a long briefing times 22050 overflows them
@@ -954,7 +971,7 @@ def main():
         if txt.endswith(b'END'):
             txt = txt[:-3]
         open(os.path.join(out, 'BRIEF%d.TXT' % (i + 1)), 'wb').write(txt)
-        s = read_wav(ta.path('camps/briefs/arm%02d.wav' % (i + 1)), 6258)
+        s = read_wav(ta.path('camps/briefs/arm%02d.wav' % (i + 1)), 12517)
         open(os.path.join(out, 'BRIEF%d.SND' % (i + 1)), 'wb').write(s)
     write_picture(ta.path('bitmaps/frontendx.pcx'), os.path.join(out, 'TITLE.IMG'))
     write_picture(ta.path('bitmaps/singlebg.pcx'), os.path.join(out, 'SINGLE.IMG'))

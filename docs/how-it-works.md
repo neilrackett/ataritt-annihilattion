@@ -15,7 +15,7 @@ big-endian for the 68030:
 | `COMMON.DAT` | the battle palette, the panels, features, effects, cursors, unit pictures, buttons and the font |
 | `MISS1.DAT` to `MISS3.DAT` | each mission's map tiles, heights, metal, objectives, scripts and placed units |
 | `SOUNDS.DAT` | the sound effects, signed 8-bit |
-| `BRIEF1.SND`, `BRIEF1.TXT` ... | each briefing's narration at 6258 Hz and its text |
+| `BRIEF1.SND`, `BRIEF1.TXT` ... | each briefing's narration at 12517 Hz and its text |
 | `TITLE.IMG`, `SINGLE.IMG`, `BRIEF.IMG`, `GLAM1.IMG` ... | full-screen pictures with their own palettes |
 
 Units are drawn offline from their 3D models in 16 directions
@@ -35,7 +35,7 @@ art go to `build/previews` for checking.
 | `src/sim.c`, `src/sim.h` | the battle: units, orders, paths, weapons, building, metal and energy, scripts, the computer player, objectives |
 | `src/game.c`, `src/game.h` | a mission on screen: the background and composite buffers, the panels, the mouse and keys |
 | `src/main.c` | the menus, briefings and loading screens, and the scripted test driver |
-| `src/snd.c`, `src/snd.h` | sound effects and narration |
+| `src/snd.c`, `src/snd.h` | sound effects, and the narration streamed through a ring in ST-RAM |
 
 The battlefield is drawn from a background in TT-RAM, the terrain with the
 trees and wrecks over it, and a composite, the background with each frame's

@@ -102,6 +102,19 @@ void tt_free(void* p);
 /// @param rate 0 for 6258 Hz, only where tt_plays_6258; 1 for 12517 Hz
 void tt_sound_play(const int8_t* start, int32_t len, int rate);
 
+/// Plays signed 8-bit mono samples through DMA sound over and over, until
+/// stopped, stopping whatever played.
+///
+/// @param start the first sample, in ST-RAM
+/// @param len the number of samples, even
+/// @param rate as for tt_sound_play()
+void tt_sound_loop(const int8_t* start, int32_t len, int rate);
+
+/// Tells where DMA sound plays.
+///
+/// @return the address it reads samples from
+const int8_t* tt_sound_pos(void);
+
 /// Stops DMA sound.
 void tt_sound_stop(void);
 

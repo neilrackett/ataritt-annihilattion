@@ -25,6 +25,9 @@ the briefing and the march on the CORE KBot base.
 - [Testing](docs/testing.md): scripted test runs in Hatari
 - [On a Falcon](docs/falcon.md): an experiment
 
+In future, hopefully the full game will be supported, but for now, enjoy
+the demo!
+
 ## Run
 
 AnnihilaTTion plays the demo's own data, which isn't included here, so you

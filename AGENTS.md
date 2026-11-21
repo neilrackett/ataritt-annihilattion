@@ -115,6 +115,10 @@ stage's share; `fps1`, `fps3`, `scroll` and `battle` are the ones to watch.
   spill pointers to the stack. `copy_run()` is a small assembly loop (two
   `move.l` and a `dbra`) for that reason. Look at the object code
   (`m68k-atari-mintelf-objdump -d build/game.o`) before trusting a loop.
+- **DMA sound reads only ST-RAM.** The narration is too long to keep there
+  at 12517 Hz, so it loads into TT-RAM and `snd_stream()` plays it through a
+  64 KB ring in ST-RAM. The briefing's loop calls `snd_stream_update()`,
+  which refills the half that isn't playing.
 - **Per-call costs add up.** A function call, a modulo or a division per
   row or per group cost more than the work. Step pointers instead, and wrap
   ring columns with `& (RING_G - 1)`.
@@ -130,6 +134,8 @@ stage's share; `fps1`, `fps3`, `scroll` and `battle` are the ones to watch.
   - In the browser numpy's integers are 32-bit: `np.arange(n) * 22050`
     overflowed there and garbled the briefings. Use explicit `float64` or
     `int64` wherever a product can pass 2^31.
+  - Sounds are filtered before resampling with `np.convolve` on `int64`, so
+    that no platform's summation order can change a byte.
 - `cd web && pnpm test` converts `tmp/ta-demo/Total Annihilation.exe`
   through Pyodide in Node, about two minutes, and checks every file against
   `dist/`. It skips itself without the installer, as on GitHub's runners.

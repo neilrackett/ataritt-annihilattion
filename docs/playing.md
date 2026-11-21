@@ -39,7 +39,8 @@ These are the compromises the TT needs, and they are deliberate:
 - The simulation runs 15 times a second (the original runs 30); units can
   overlap; paths are found on 32-pixel cells; the original's unit scripts
   (COB) do not run.
-- One sound plays at a time, mostly at 6258 Hz; no music (the demo has none).
+- One sound plays at a time: the narration at 12517 Hz, the longer effects
+  at 6258 Hz. No music (the demo has none).
 - No saving, multiplayer, skirmish or options beyond sound and difficulty.
 
 ## Controls
@@ -69,7 +70,8 @@ takes one away. Pointing at a build picture shows its cost.
 ## On the TT
 
 - TOS 3.06 with 2 MB of ST-RAM and 4 MB of TT-RAM: the program loads into
-  TT-RAM and keeps the screens, sounds and narration in ST-RAM. With
+  TT-RAM and keeps the screens and sounds in ST-RAM. A briefing's narration
+  loads into TT-RAM and plays through 64 KB of ST-RAM. With
   mission 3 loaded about 1 MB of each is still free.
 - It needs the TT's own video, and stops with a message on any other machine
   but a Falcon ([an experiment](falcon.md)).

@@ -38,6 +38,9 @@
 #define SND_START_HI (*(volatile uint8_t*)0xFFFF8903UL)
 #define SND_START_MID (*(volatile uint8_t*)0xFFFF8905UL)
 #define SND_START_LO (*(volatile uint8_t*)0xFFFF8907UL)
+#define SND_COUNT_HI (*(volatile uint8_t*)0xFFFF8909UL)
+#define SND_COUNT_MID (*(volatile uint8_t*)0xFFFF890BUL)
+#define SND_COUNT_LO (*(volatile uint8_t*)0xFFFF890DUL)
 #define SND_END_HI (*(volatile uint8_t*)0xFFFF890FUL)
 #define SND_END_MID (*(volatile uint8_t*)0xFFFF8911UL)
 #define SND_END_LO (*(volatile uint8_t*)0xFFFF8913UL)
@@ -353,7 +356,9 @@ int tt_shift(void) {
     return ((s & 3) ? 1 : 0) | ((s & 4) ? 2 : 0) | ((s & 8) ? 4 : 0);
 }
 
-void tt_sound_play(const int8_t* start, int32_t len, int rate) {
+/* Starts DMA sound over len samples from start: ctrl 1 plays them once,
+ * 3 over and over */
+static void sound_start(const int8_t* start, int32_t len, int rate, uint8_t ctrl) {
     uint32_t a = (uint32_t)start, e = a + (uint32_t)len;
     SND_CTRL = 0;
     SND_START_HI = (uint8_t)(a >> 16);
@@ -363,7 +368,29 @@ void tt_sound_play(const int8_t* start, int32_t len, int rate) {
     SND_END_MID = (uint8_t)(e >> 8);
     SND_END_LO = (uint8_t)e;
     SND_MODE = (uint8_t)(0x80 | (rate & 3));
-    SND_CTRL = 1;
+    SND_CTRL = ctrl;
+}
+
+void tt_sound_play(const int8_t* start, int32_t len, int rate) {
+    sound_start(start, len, rate, 1);
+}
+
+void tt_sound_loop(const int8_t* start, int32_t len, int rate) {
+    sound_start(start, len, rate, 3);
+}
+
+static uint32_t sound_counter(void) {
+    return (uint32_t)SND_COUNT_HI << 16 | (uint32_t)SND_COUNT_MID << 8 | SND_COUNT_LO;
+}
+
+const int8_t* tt_sound_pos(void) {
+    /* read until two readings agree: the bytes can change between reads */
+    uint32_t a, b = sound_counter();
+    do {
+        a = b;
+        b = sound_counter();
+    } while (a != b);
+    return (const int8_t*)b;
 }
 
 void tt_sound_stop(void) {

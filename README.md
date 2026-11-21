@@ -8,6 +8,8 @@ The Total Annihilation demo for the Atari TT, by [Neil Rackett](https://neilrack
 
 Total Annihilation, the real-time strategy classic, on an Atari TT!
 
+[Watch it play](docs/images/annihilattion.mp4): the menus, the briefing and the march on the CORE KBot base, recorded in Hatari's TT, which draws about twice as fast as a real one
+
 AnnihilaTTion is a demake of the free Total Annihilation demo for the TT030,
 in TT medium resolution: 640x480 in 16 colours, the same screen size as the
 original. It plays the demo's three Arm missions with their briefings and

@@ -130,6 +130,8 @@ static int test_next(void) {
             log_stats("stats");
         } else if (!strcmp(word, "fast")) {
             game_fast = 1;
+        } else if (!strcmp(word, "slow")) {
+            game_fast = 0;
         } else if (!strcmp(word, "end")) {
             log_stats("end");
             test_log("result %d", sim_result);

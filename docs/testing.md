@@ -20,7 +20,7 @@ then gives one command a line:
 | Command | What it does |
 | --- | --- |
 | `wait FRAMES` | lets frames pass |
-| `fast` | a tick every frame from now on, however long a frame takes |
+| `fast`, `slow` | a tick every frame from now on, however long a frame takes; or back to 15 ticks a second |
 | `mouse X Y BUTTONS`, `key SCAN ASCII` | the pointer and buttons, or a key (hex) |
 | `camera X Z` | looks at a place on the battlefield |
 | `shot NAME` | a screenshot |

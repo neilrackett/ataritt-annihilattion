@@ -80,10 +80,5 @@ takes one away. Pointing at a build picture shows its cost.
 
 ## Speed
 
-Measured in Hatari's TT, which runs compiled code about 2.2 times faster than
-a real TT does: about 75 to 90 frames a second with the view still and 29
-while it scrolls every frame; the simulation takes 2 to 9 ms a tick (mission 3
-has about 90 units). On a real TT expect a little under half that: still views
-around 35 to 40 frames a second, scrolling around 13. The game keeps 15 ticks a
-second of game time when the machine keeps up, and slows down rather than
-skipping when it does not.
+The game keeps 15 ticks a second of game time when the machine keeps up, and
+slows down rather than skipping when it does not.

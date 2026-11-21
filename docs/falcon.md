@@ -14,8 +14,7 @@ only run in Hatari's Falcon (with EmuTOS), never on a real one.
   program; `src/tt.c` puts its own CPU check in place of mintlib's, asking
   only for a 68030 (the game uses no floating point).
 - In Hatari's Falcon it draws 20 to 27 ms a frame with the view still and
-  60 ms while it scrolls every frame, 2 to 3 times as long as in Hatari's TT;
-  how that compares with a real Falcon has not been measured.
+  60 ms while it scrolls every frame, 2 to 3 times as long as in Hatari's TT.
 
 The Falcon's mode, colours, caches and sound routing are set and put back in
 one part of `src/tt.c`; the rest of the game only knows that it plays no

@@ -7,8 +7,6 @@
 # Plays the build (build.sh) in a Hatari window as the target TT
 # (hatari_tt.sh; MACHINE=falcon for the Falcon experiment), with
 # dist as drive C: and ANNIHILA.TOS started.
-# Hatari's TT runs compiled code about twice as fast as a real one, so a real
-# TT plays slower than this.
 #
 # Environment: as hatari_tt.sh.
 set -eu

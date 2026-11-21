@@ -16,12 +16,7 @@ scripts, all converted from the demo's own data. It's not quite _total_, as
 the TT needs a few compromises, but it's recognisably Total Annihilation.
 
 [Watch the full video](docs/images/annihilattion.mp4), with sound: the menus,
-the briefing and the march on the CORE KBot base. Recorded in Hatari's TT,
-which draws about twice as fast as a real one.
-
-It's a separate, small engine written in C for the 68030, inspired by
-[Open Annihilation](https://github.com/open-annihilation/open-annihilation),
-the open engine for the full game, and started life inside it.
+the briefing and the march on the CORE KBot base.
 
 - [Playing](docs/playing.md): what it plays and leaves out, controls, and
   running it on a TT

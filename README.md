@@ -1,5 +1,7 @@
 # AnnihilaTTion
 
+<img src="./docs/images/annihilattion.png" alt="The Commander in the CORE KBot base, in TT medium resolution" width="640" height="480"/>
+
 The Total Annihilation demo for the Atari TT, by [Neil Rackett](https://neilrackett.com/atarist)
 
 ## Introduction

@@ -1,0 +1,87 @@
+# Copyright (C) 2026 Neil Rackett
+# SPDX-License-Identifier: GPL-3.0-or-later
+mission 3 1
+wait 2
+stats
+camera 1500 1600
+wait 1
+camera 1516 1608
+wait 1
+camera 1532 1616
+wait 1
+camera 1548 1624
+wait 1
+camera 1564 1632
+wait 1
+camera 1580 1640
+wait 1
+camera 1596 1648
+wait 1
+camera 1612 1656
+wait 1
+camera 1628 1664
+wait 1
+camera 1644 1672
+wait 1
+camera 1660 1680
+wait 1
+camera 1676 1688
+wait 1
+camera 1692 1696
+wait 1
+camera 1708 1704
+wait 1
+camera 1724 1712
+wait 1
+camera 1740 1720
+wait 1
+camera 1756 1728
+wait 1
+camera 1772 1736
+wait 1
+camera 1788 1744
+wait 1
+camera 1804 1752
+wait 1
+camera 1820 1760
+wait 1
+camera 1836 1768
+wait 1
+camera 1852 1776
+wait 1
+camera 1868 1784
+wait 1
+camera 1884 1792
+wait 1
+camera 1900 1800
+wait 1
+camera 1916 1808
+wait 1
+camera 1932 1816
+wait 1
+camera 1948 1824
+wait 1
+camera 1964 1832
+wait 1
+camera 1980 1840
+wait 1
+camera 1996 1848
+wait 1
+camera 2012 1856
+wait 1
+camera 2028 1864
+wait 1
+camera 2044 1872
+wait 1
+camera 2060 1880
+wait 1
+camera 2076 1888
+wait 1
+camera 2092 1896
+wait 1
+camera 2108 1904
+wait 1
+camera 2124 1912
+wait 1
+stats
+end

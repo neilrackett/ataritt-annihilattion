@@ -1,0 +1,22 @@
+# Copyright (C) 2026 Neil Rackett
+# SPDX-License-Identifier: GPL-3.0-or-later
+mission 2 1
+wait 2
+key 2e 63
+wait 2
+mouse 56 108 2
+wait 1
+mouse 56 108 0
+wait 1
+mouse 400 300 0
+fast
+wait 60
+debug 0
+wait 200
+debug 0
+wait 200
+debug 0
+camera 974 1117
+wait 2
+shot G1
+end

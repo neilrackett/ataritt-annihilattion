@@ -1,0 +1,9 @@
+# Copyright (C) 2026 Neil Rackett
+# SPDX-License-Identifier: GPL-3.0-or-later
+mission 3 1
+fast
+wait 20
+teleport 12 2050 2100
+wait 40
+result
+end

@@ -1,0 +1,30 @@
+# Copyright (C) 2026 Neil Rackett
+# SPDX-License-Identifier: GPL-3.0-or-later
+# The Commander reclaims a tree, then fires the D-gun.
+mission 2 1
+wait 2
+key 2e 63
+wait 2
+mouse 328 72 1
+wait 1
+mouse 328 72 0
+wait 1
+mouse 400 300 0
+fast
+wait 30
+shot R1
+wait 150
+feat
+res
+key 20 64
+wait 1
+mouse 250 380 1
+wait 1
+mouse 250 380 0
+wait 1
+mouse 400 300 0
+wait 3
+shot R2
+wait 40
+res
+end

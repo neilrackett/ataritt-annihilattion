@@ -1,0 +1,10 @@
+# Copyright (C) 2026 Neil Rackett
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# the compiled program
+build/
+# the demo's installer and game data, the converted data and test runs:
+# the demo's data is Cavedog's, so it never enters the repository
+local/
+__pycache__/
+.DS_Store

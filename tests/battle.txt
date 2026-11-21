@@ -1,0 +1,25 @@
+# Copyright (C) 2026 Neil Rackett
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Mission 1's first fight, watched: every unit sent to the Gate.
+mission 1 1
+wait 2
+key 1e 01
+wait 2
+mouse 58 29 2
+wait 1
+mouse 58 29 0
+wait 1
+mouse 400 300 0
+fast
+wait 150
+units
+camera 1150 1700
+wait 1
+shot W1
+wait 4
+shot W2
+wait 60
+camera 1100 1400
+wait 1
+shot W3
+end

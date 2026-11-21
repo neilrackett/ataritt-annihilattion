@@ -38,22 +38,23 @@ game data is read out of the installer.
    `local/ta-demo/data` (`tools/pe_resource.py`, `tools/hpi_extract.py`),
    the first time only.
 2. The demo's data is converted for the TT (`tools/convert.py`, about a
-   minute) into `local/ANNIHILA`, with pictures of the converted art in
+   minute) into `dist`, with pictures of the converted art in
    `local/previews`. It is converted again whenever the converter changes.
-3. `ANNIHILA.TOS` is compiled (`Makefile`, `src/`) through `stcmd` and copied
-   into the same folder.
+3. `ANNIHILA.TOS` is compiled (`Makefile`, `src/`) through `stcmd` into the
+   same folder.
 
-`local/` is ignored by Git: it holds the demo's data, which is Cavedog's.
+`dist` and `local/` are ignored by Git: they hold the demo's data, which is
+Cavedog's.
 
-Copy the whole `local/ANNIHILA` folder (about 7 MB) to the TT's hard disk,
-for example as `C:\ANNIHILA`, and run `ANNIHILA.TOS` from it.
+Copy the files in `dist` (about 7 MB) to a folder on the TT's hard disk,
+for example `C:\ANNIHILA`, and run `ANNIHILA.TOS` from it.
 
 ## Make
 
 | Command | What it does |
 | --- | --- |
-| `stcmd make` | compiles `build/ANNIHILA.TOS` only |
-| `stcmd make clean` | removes `build/` |
+| `stcmd make` | compiles `dist/ANNIHILA.TOS` only |
+| `stcmd make clean` | removes `dist/ANNIHILA.TOS` |
 | `make play` | builds with `build.sh`, then plays it in a Hatari window as the TT |
 | `make test TEST=tests/win2.txt` | builds, then runs one test script headless ([testing](testing.md)) |
 

@@ -37,7 +37,7 @@ build it yourself:
    [Internet Archive](https://archive.org/details/TotalAnnihilation_201405)
    and put it in `local/ta-demo/`
 1. Run `./build.sh` (see [Building](docs/building.md))
-1. Copy the `local/ANNIHILA` folder to your TT's hard disk and run
+1. Copy the files in `dist` to a folder on your TT's hard disk and run
    `ANNIHILA.TOS`
 
 To try it first, `make play` plays it in [Hatari](https://www.hatari-emu.org).
@@ -72,9 +72,9 @@ See [Playing](docs/playing.md) for the rest.
    `python3` with numpy and Pillow
 1. Open the command line and navigate to the project directory
 1. Run `./build.sh` to unpack and convert the demo's data and compile the game
-1. Files will be created in the `local/ANNIHILA` folder
+1. Files will be created in the `dist` folder
 
-`stcmd make` compiles the program alone, into `build/ANNIHILA.TOS`.
+`stcmd make` compiles the program alone, into `dist/ANNIHILA.TOS`.
 
 ## Credits
 

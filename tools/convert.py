@@ -3,7 +3,7 @@
 
 """Converts the Total Annihilation demo's game data for the Atari TT demake.
 
-usage: convert.py DEMO_DATA_DIR OUT_DIR
+usage: convert.py DEMO_DATA_DIR OUT_DIR [PREVIEW_DIR]
 
 DEMO_DATA_DIR is the demo's TADemo.hpi unpacked by hpi_extract.py. OUT_DIR
 receives the files the TT program reads, all big-endian:
@@ -18,7 +18,8 @@ receives the files the TT program reads, all big-endian:
   TITLE.IMG, SINGLE.IMG, BRIEF.IMG, GLAM1.IMG..  full-screen pictures with
               their own palettes; GLAMn.IMG shows while mission n loads
 
-Pictures of the converted art for checking go to previews/ beside OUT_DIR.
+Pictures of the converted art for checking go to PREVIEW_DIR, or previews/
+beside OUT_DIR.
 
 The layouts are mirrored in ../src/data.h; change both together.
 """
@@ -901,7 +902,7 @@ MAX_SOUND = 1.6
 SOUNDS = Sounds()
 
 
-PREVIEWS = None     # where pictures of the converted art go, beside OUT_DIR
+PREVIEWS = None     # where pictures of the converted art go
 
 
 def main():
@@ -909,7 +910,7 @@ def main():
     ta.ROOT = sys.argv[1]
     out = sys.argv[2]
     os.makedirs(out, exist_ok=True)
-    PREVIEWS = os.path.join(os.path.dirname(os.path.abspath(out)), 'previews')
+    PREVIEWS = sys.argv[3] if len(sys.argv) > 3 else os.path.join(os.path.dirname(os.path.abspath(out)), 'previews')
     os.makedirs(PREVIEWS, exist_ok=True)
     maps = {m: ta.read_tnt(ta.path('maps/%s.tnt' % m)) for m in MISSIONS}
     game_pal = gather_palette(maps)

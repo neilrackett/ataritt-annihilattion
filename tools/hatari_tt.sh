@@ -15,7 +15,7 @@
 # the PATH, else the Mac app).
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 REPO=$HERE
-GAME=$REPO/local/ANNIHILA
+GAME=$REPO/dist
 HATARI=${HATARI:-$(command -v hatari || echo /Applications/Hatari.app/Contents/MacOS/hatari)}
 if [ "${MACHINE:-tt}" = falcon ]; then
   TOS=${TOS:-$REPO/../atarist-stdl/tmp/tos/etos512uk.img}

@@ -10,8 +10,8 @@
 # local/runs/NAME: its OALOG.TXT is the program's log, and every
 # SHOT*.RAW the script took is also written as PNG.
 #
-# Environment: as hatari_tt.sh, and DATA (default: local/ANNIHILA),
-# PRG (the program, default: build/ANNIHILA.TOS), FAST (default on).
+# Environment: as hatari_tt.sh, and DATA (default: dist),
+# PRG (the program, default: dist/ANNIHILA.TOS), FAST (default on).
 set -u
 NAME=$1; TEST=$2; SECS=${3:-300}
 . "$(dirname "$0")/hatari_tt.sh"
@@ -23,7 +23,7 @@ rm -rf "$R"; mkdir -p "$R/hd"
 for f in "$DATA"/*.DAT "$DATA"/*.IMG "$DATA"/*.SND "$DATA"/BRIEF*.TXT; do
   ln "$f" "$R/hd/" 2>/dev/null || cp "$f" "$R/hd/"
 done
-cp "${PRG:-$HERE/build/ANNIHILA.TOS}" "$R/hd/ANNIHILA.TOS"
+cp "${PRG:-$GAME/ANNIHILA.TOS}" "$R/hd/ANNIHILA.TOS"
 cp "$TEST" "$R/hd/OATEST.TXT"
 : > "$R/hatari.cfg"
 SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy "$HATARI" --configfile "$R/hatari.cfg" \

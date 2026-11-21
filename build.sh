@@ -4,8 +4,8 @@
 
 # build.sh [INSTALLER]
 #
-# Builds AnnihilaTTion into local/ANNIHILA, the folder to copy to the TT:
-# ANNIHILA.TOS and the converted game data.
+# Builds AnnihilaTTion into dist, the folder to copy to the TT: ANNIHILA.TOS
+# and the converted game data.
 #
 #   1. Unpacks the Total Annihilation demo (1997) installer, "Total
 #      Annihilation.exe", into local/ta-demo/data, if that is not done yet:
@@ -22,14 +22,14 @@ set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$HERE
 DEMO=$REPO/local/ta-demo
-OUT=$REPO/local/ANNIHILA
+OUT=$REPO/dist
 INSTALLER=${1:-$DEMO/Total Annihilation.exe}
 SHA=5e41cf05226c274b4ac9e4398f74f6b321506bd7a4317ee1744ff7aceba34c49
 
 if [ ! -d "$DEMO/data/maps" ]; then
   if [ ! -f "$INSTALLER" ]; then
     echo "No demo installer at $INSTALLER." >&2
-    echo "Download Total Annihilation.exe as README.md's 'Playing the demo' says, and pass its path." >&2
+    echo "Download Total Annihilation.exe as docs/building.md says, and pass its path." >&2
     exit 1
   fi
   [ "$(wc -c < "$INSTALLER" | tr -d ' ')" = 21540864 ] || { echo "$INSTALLER is not the demo installer (size)." >&2; exit 1; }
@@ -41,7 +41,7 @@ fi
 
 if [ ! -f "$OUT/MISS3.DAT" ] || [ -n "$(find "$HERE/tools" -name '*.py' -newer "$OUT/MISS3.DAT")" ]; then
   echo "Converting the demo's data (about a minute)..."
-  python3 "$HERE/tools/convert.py" "$DEMO/data" "$OUT"
+  python3 "$HERE/tools/convert.py" "$DEMO/data" "$OUT" "$REPO/local/previews"
 fi
 
 cd "$HERE"
@@ -50,7 +50,6 @@ if [ "${CROSS:-stcmd}" = direct ]; then
 else
   STCMD_NO_TTY=1 STCMD_QUIET=1 stcmd make
 fi
-cp build/ANNIHILA.TOS "$OUT/ANNIHILA.TOS"
 echo
-echo "Done: copy $OUT to the TT (for example to C:\\ANNIHILA) and run ANNIHILA.TOS."
+echo "Done: copy the files in $OUT to the TT (for example to C:\\ANNIHILA) and run ANNIHILA.TOS."
 du -sh "$OUT"

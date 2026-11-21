@@ -587,13 +587,16 @@ def write_common(out, game_pal, mapper, unit_names, feat_defs, fnames):
     font = gaf('hattfont12')
     seq = list(font.values())[0]
     base = seq[0x49][1]
+    # The glyphs are shaded greys: the bright ones are the letter, and the
+    # dark ones its outline, shadow and counters (the hole in a 0)
+    bright = np.array(pal, np.uint8).max(axis=1) >= 147
     glyphs = bytearray()
     gofs = []
     for c in range(256):
         w, h, x, y, pix, tr = seq[c] if c < len(seq) else seq[0]
         px = np.array(pix, np.uint8).reshape(h, w)
-        body = (px != tr) & (px != 93)          # 93 is the glyphs' dark outline
-        line = px == 93
+        body = (px != tr) & bright[px]
+        line = (px != tr) & ~bright[px]
         w2 = min(w, 16)
         # each row: the letter's word, then its outline's
         rows = np.stack([body[:, :w2] @ BITS[:w2], line[:, :w2] @ BITS[:w2]], axis=1)

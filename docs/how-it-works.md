@@ -38,11 +38,18 @@ art go to `build/previews` for checking.
 | `src/snd.c`, `src/snd.h` | sound effects and narration |
 
 The battlefield is drawn from a background in TT-RAM, the terrain with the
-trees and wrecks over it, which only redraws the strips that scroll into view
-or the area round a feature that comes or goes. Each frame's units, shots and
-effects go onto a copy of it, and each of the three screens in ST-RAM copies
-only the 16x16 cells that changed since it was last shown. The interface
-round the battlefield is drawn into a buffer of its own when it changes.
+trees and wrecks over it, and a composite, the background with each frame's
+units, shots and effects. Both are rings the size of the view: a place on
+the battlefield always sits at the same spot in them (its position modulo
+their size), so when the view scrolls only the strips that come into it are
+drawn, and nothing already there is moved; the area round a feature that
+comes or goes is drawn again the same way. Drawing on the composite splits
+whatever crosses the rings' seams. Each of the three screens in ST-RAM
+copies only the 16x16 cells that changed since it was last shown, or the
+whole view after a scroll. The view moves across in 16-pixel steps, as the
+screen's planes are copied a group of 16 pixels at a time, and down by the
+pixel. The interface round the battlefield is drawn into a buffer of its own
+when it changes.
 
 The simulation runs 15 ticks a second in 24.8 fixed point: A\* paths on a grid
 of 32-pixel cells that movement keeps to as well, 64-pixel buckets for finding

@@ -23,7 +23,7 @@ Units are drawn offline from their 3D models in 16 directions
 16-colour palette chosen from the maps and units with ordered dithering
 (`tools/quant.py`). Each map is cut into 32x32 tiles, with near-identical
 tiles merged so that each mission fits in memory. Pictures of the converted
-art go to `local/previews` for checking.
+art go to `build/previews` for checking.
 
 ## The engine
 

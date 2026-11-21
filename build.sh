@@ -41,7 +41,7 @@ fi
 
 if [ ! -f "$OUT/MISS3.DAT" ] || [ -n "$(find "$HERE/tools" -name '*.py' -newer "$OUT/MISS3.DAT")" ]; then
   echo "Converting the demo's data (about a minute)..."
-  python3 "$HERE/tools/convert.py" "$DEMO/data" "$OUT" "$REPO/local/previews"
+  python3 "$HERE/tools/convert.py" "$DEMO/data" "$OUT" "$REPO/build/previews"
 fi
 
 cd "$HERE"

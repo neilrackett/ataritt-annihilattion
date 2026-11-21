@@ -1,10 +1,12 @@
 # Copyright (C) 2026 Neil Rackett
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# the program and the converted data, which is the demo's and so Cavedog's
+# what the TT needs: the program and the converted data, which is the
+# demo's and so Cavedog's
 dist/
-# the demo's installer and game data, pictures of the converted art and
-# test runs
+# the objects and pictures of the converted art
+build/
+# the demo's installer and game data, and test runs
 local/
 __pycache__/
 .DS_Store

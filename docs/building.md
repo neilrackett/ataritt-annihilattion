@@ -39,9 +39,10 @@ game data is read out of the installer.
    the first time only.
 2. The demo's data is converted for the TT (`tools/convert.py`, about a
    minute) into `dist`, with pictures of the converted art in
-   `local/previews`. It is converted again whenever the converter changes.
+   `build/previews`. It is converted again whenever the converter changes.
 3. `ANNIHILA.TOS` is compiled (`Makefile`, `src/`) through `stcmd` into the
-   same folder.
+   same folder, its objects in `build`. `dist` then holds only what the TT
+   needs.
 
 `dist` and `local/` are ignored by Git: they hold the demo's data, which is
 Cavedog's.
@@ -54,7 +55,7 @@ for example `C:\ANNIHILA`, and run `ANNIHILA.TOS` from it.
 | Command | What it does |
 | --- | --- |
 | `stcmd make` | compiles `dist/ANNIHILA.TOS` only |
-| `stcmd make clean` | removes `dist/ANNIHILA.TOS` |
+| `stcmd make clean` | removes `build` and `dist/ANNIHILA.TOS` |
 | `make play` | builds with `build.sh`, then plays it in a Hatari window as the TT |
 | `make test TEST=tests/win2.txt` | builds, then runs one test script headless ([testing](testing.md)) |
 

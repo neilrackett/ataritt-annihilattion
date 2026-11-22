@@ -72,7 +72,8 @@ def num(d, key, default=0.0):
     try:
         return float(d.get(key, default))
     except ValueError:
-        m = re.match(r'\s*-?[0-9.]+', str(d.get(key, '')))
+        # a number followed by something else, such as 3.6. (a full game's typo)
+        m = re.match(r'\s*-?(\d+\.?\d*|\.\d+)', str(d.get(key, '')))
         return float(m.group(0)) if m else default
 
 

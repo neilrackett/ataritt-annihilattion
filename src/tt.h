@@ -94,20 +94,12 @@ void* tt_alloc_any(int32_t bytes);
 /// @param p the block; null does nothing
 void tt_free(void* p);
 
-/// Plays signed 8-bit mono samples once through DMA sound, stopping
-/// whatever played.
-///
-/// @param start the first sample, in ST-RAM
-/// @param len the number of samples
-/// @param rate 0 for 6258 Hz, only where tt_plays_6258; 1 for 12517 Hz
-void tt_sound_play(const int8_t* start, int32_t len, int rate);
-
 /// Plays signed 8-bit mono samples through DMA sound over and over, until
 /// stopped, stopping whatever played.
 ///
 /// @param start the first sample, in ST-RAM
 /// @param len the number of samples, even
-/// @param rate as for tt_sound_play()
+/// @param rate 0 for 6258 Hz, only where tt_plays_6258; 1 for 12517 Hz
 void tt_sound_loop(const int8_t* start, int32_t len, int rate);
 
 /// Tells where DMA sound plays.
@@ -118,10 +110,21 @@ const int8_t* tt_sound_pos(void);
 /// Stops DMA sound.
 void tt_sound_stop(void);
 
-/// Tells whether DMA sound still plays.
+/// Shows the films' mode: TT low resolution (320x480 in 256 colours, 8
+/// interleaved planes), or the same on a Falcon's VGA monitor, on the
+/// front screen, cleared to black.
 ///
-/// @return nonzero while it plays
-int tt_sound_busy(void);
+/// @return 1 when set, 0 when the machine has no such mode (a Falcon's RGB
+/// monitor or TV)
+int tt_film_mode(void);
+
+/// Sets the films' 256 colours.
+///
+/// @param pal 256 colours, 4 bits a gun: 0x0RGB
+void tt_film_palette(const uint16_t* pal);
+
+/// Goes back from the films' mode to 640x480 in 16 colours, black.
+void tt_film_end(void);
 
 /// Tells the player on the console why the game stops, before or after its
 /// screens, and waits for a key.

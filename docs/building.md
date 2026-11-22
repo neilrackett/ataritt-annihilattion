@@ -1,8 +1,9 @@
 # Building AnnihilaTTion
 
-AnnihilaTTion plays the free Total Annihilation demo's own missions, units and
-maps, converted for the TT on a modern computer. The demo is not part of this
-repository: you download it, and `build.sh` does the rest.
+AnnihilaTTion plays Total Annihilation's own missions, units and maps,
+converted for the TT on a modern computer: the free demo's, or the full
+game's from your own CDs. Neither is part of this repository: you download
+the demo, or make images of your CDs, and `build.sh` does the rest.
 
 ## What you need
 
@@ -13,6 +14,8 @@ repository: you download it, and `build.sh` does the rest.
 - `python3` with numpy and Pillow, for the converter.
 - [Hatari](https://www.hatari-emu.org), only to play or test it on the
   computer you build on.
+- For the full game's films, [ffmpeg](https://ffmpeg.org), which decodes
+  them. Without it the full game plays without its films.
 
 ## Get the demo
 
@@ -44,11 +47,38 @@ game data is read out of the installer.
    same folder, its objects in `build`. `dist` then holds only what the TT
    needs.
 
-`dist` and `tmp/` are ignored by Git: they hold the demo's data, which is
+`dist` and `tmp/` are ignored by Git: they hold the game's data, which is
 Cavedog's.
 
 Copy the files in `dist` (about 7 MB) to a folder on the TT's hard disk,
 for example `C:\ANNIHILA`, and run `ANNIHILA.TOS` from it.
+
+## The full game
+
+The full game comes from images of its two CDs (Total Annihilation, 1997,
+without the expansion packs): a CUE sheet with its BIN or IMG, or an ISO,
+for each disc. Put them in `tmp/disks`, in folders whose names include
+`DISK1` and `DISK2` (for example `tmp/disks/Base Game/DISK1/Total.cue`), or
+pass their paths:
+
+```
+./build.sh --full [DISC1 DISC2]
+```
+
+1. The CDs are unpacked into `tmp/ta-full` (`tools/cd_extract.py`), the
+   first time only: the game data the installer would copy, then the
+   discs' own archives over it, the first disc's audio tracks (the music,
+   which needs the CUE sheet) and its films.
+2. The full game's data is converted (`tools/convert.py`, about half an
+   hour) into `dist/full`, with pictures of the converted art in
+   `build/previews-full`: both campaigns' 50 missions, the 24 multiplayer
+   maps that fit the TT for skirmishes, a palette and the units' sprites for
+   each of its 9 worlds, the music and the films.
+3. `ANNIHILA.TOS` is compiled and copied into `dist/full`.
+
+Copy the files in `dist/full` (about 300 MB) to a folder on the TT's hard
+disk and run `ANNIHILA.TOS` from it. `DATA=dist/full tools/play_hatari.sh`
+plays it in Hatari.
 
 Each push to `main` also builds `ANNIHILA.TOS` on GitHub and puts it on the
 [latest release](https://github.com/neilrackett/ataritt-annihilattion/releases/tag/latest)

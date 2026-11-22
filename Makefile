@@ -10,7 +10,7 @@
 
 CC := m68k-atari-mintelf-gcc
 CFLAGS := -m68020-60 -mtune=68030 -O2 -fomit-frame-pointer -Wall -Wextra -Wno-unused-parameter -std=gnu99
-SRC := src/main.c src/game.c src/sim.c src/gfx.c src/data.c src/tt.c src/snd.c
+SRC := src/main.c src/game.c src/sim.c src/gfx.c src/data.c src/tt.c src/snd.c src/sprites.c src/film.c
 HDR := $(wildcard src/*.h)
 OBJ := $(SRC:src/%.c=build/%.o)
 

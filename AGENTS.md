@@ -1,9 +1,11 @@
 # Working on AnnihilaTTion
 
 AnnihilaTTion is a Total Annihilation engine for the Atari TT, playing the
-free demo's three Arm missions in TT medium (640x480, 16 colours). It is a
-small engine of its own, written in C for the 68030, plus a Python converter
-that turns the demo's data into what the engine reads. This file holds the
+free demo's three Arm missions, or the full game's two campaigns from its
+CDs, in TT medium (640x480, 16 colours). It is a small engine of its own,
+written in C for the 68030, plus a Python converter that turns the game's
+data into what the engine reads; the demo and the full game convert to the
+same files, and one program plays either. This file holds the
 rules and the lessons that the docs don't: read the docs for what things are.
 
 | For | Read |
@@ -22,9 +24,10 @@ rules and the lessons that the docs don't: read the docs for what things are.
   data, not a test fixture. `dist/`, `build/` and `tmp/` are ignored for
   this reason.
 - **Folders**: build artifacts in `build/`; only what the TT needs in `dist/`
-  (`ANNIHILA.TOS` and the data); the demo, test runs and TOS images in
-  `tmp/` (`tmp/ta-demo`, `tmp/runs`, `tmp/tos`). Nothing points at other
-  checkouts on Neil's computer.
+  (`ANNIHILA.TOS` and the demo's data) and `dist/full` (the full game's);
+  the demo, the CDs' images and what they unpack to, test runs and TOS
+  images in `tmp/` (`tmp/ta-demo`, `tmp/disks`, `tmp/ta-full`, `tmp/runs`,
+  `tmp/tos`). Nothing points at other checkouts on Neil's computer.
 - **The TT comes first**, in code and docs. The Falcon is an experiment and a
   base for later. There is **one binary** for both: `src/tt.c` handles their
   differences at run time.
@@ -45,14 +48,18 @@ rules and the lessons that the docs don't: read the docs for what things are.
 
 ```
 ./build.sh                       # unpack and convert the demo, then compile
+./build.sh --full                # the full game, from the CDs in tmp/disks, into dist/full
 STCMD_NO_TTY=1 stcmd make        # compile dist/ANNIHILA.TOS only (agents, CI)
 ```
 
 gcc 13 `m68k-atari-mintelf` with mintlib, through `stcmd`
 ([atarist-toolkit-docker](https://github.com/neilrackett/atarist-toolkit-docker)).
 Keep the build free of warnings. The converter needs `python3` with numpy and
-Pillow. `build.sh` converts again whenever a `tools/*.py` is newer than
-`dist/MISS3.DAT`; conversion takes about a minute.
+Pillow, and ffmpeg for the full game's films (they are left out without it).
+`build.sh` converts again whenever a `tools/*.py` is newer than
+`GAME.DAT`; the demo takes about a minute, the full game about half an hour.
+`OA_ONLY=ac05,cc12` converts only those missions and their worlds, to try
+things out quickly (into another folder: the result is incomplete).
 
 ## Test
 
@@ -66,6 +73,10 @@ What each script should end with, on the TT and the Falcon alike:
 `m1_gate`, `win2` and `win3` win (`result 1`); `long2` and `m2_attack` lose
 (`result -1`); every other mission script ends at `result 0`; `menu` has no
 result.
+
+For the full game, `tools/test_missions.sh tests/full/look.txt` runs a
+script on each of its 50 missions (`DATA=dist/full`), or those named; each
+must load and play to its end without failing.
 
 **Before committing a change to drawing**, check that it still draws the
 same:
@@ -130,6 +141,40 @@ stage's share; `fps1`, `fps3`, `scroll` and `battle` are the ones to watch.
 - **Per-call costs add up.** A function call, a modulo or a division per
   row or per group cost more than the work. Step pointers instead, and wrap
   ring columns with `& (RING_G - 1)`.
+- **Memory is the full game's limit.** A mission's file is sized by the
+  converter to fit `MISSION_BUDGET`: its cells, the sim's and the explored
+  map's arrays (`map_alloc()`, `ex_alloc()`, sized per map when it starts)
+  and what is left for tiles; keep the converter's sums in step with the
+  engine's. Overrunning one of those blocks corrupts the next one silently:
+  the explored map broke so once.
+- **The units' sprites are a cache** (`sprites.c`): one block from TOS,
+  shared out by its own first-fit list, since TOS has only so many memory
+  descriptors. It gives up what was drawn longest ago, off screen too, and
+  reads it back when needed; a type held only while alive left aircraft
+  invisible.
+- **Paths never look for what is out of reach, and no tick waits on a
+  search.** Each move class's parts of the map are labelled when a mission
+  starts (`label_regions()`); a goal in another part becomes the nearest
+  cell in reach, and the computer's waves pick targets they can reach.
+  Searches run one at a time, `PATH_BUDGET` cells a tick (a cell costs
+  about 2000 cycles), up to `PATH_NODES`; a unit heads straight for its goal
+  until its path comes. A low cap left units in the dead ends of winding
+  maps. Searches that ran to their limit for land units across water took
+  200 ms a tick on the archipelago.
+- **A building touching a path cell closes it**: buildings 16 pixels apart
+  wall units in. The skirmish computer leaves 32 pixels round its own, and
+  the lane in front of a factory clear.
+- **TA's solar collectors make their energy as negative upkeep**
+  (`EnergyUse=-20`, `EnergyMake=0`), and a radar makes what it uses:
+  energy is `EnergyMake` less the upkeep of buildings switched on. Until
+  the upkeep counted, solar collectors made nothing.
+- **The computer builds bases in skirmishes only** (`computer_base()`), so
+  the campaigns, the demo's included, play as their scripts say.
+- **Sound is mixed**, not played: DMA sound loops a short ring that
+  `snd_update()` fills a little ahead of it, every frame, menus included.
+  It silences what has played, so a short wait without it (a disk read) is
+  quiet; a longer one (a loading screen) calls `snd_silence()` first, or
+  the last frame's sound comes round again with the ring.
 - **Back to user mode with `SuperToUser()`, not `Super()`.** `tt_init()`
   calls `Super(0L)` and `tt_exit()` returns at another stack depth. TOS's
   and EmuTOS's `Super(ssp)` puts the user stack back where `Super(0L)` left
@@ -152,7 +197,10 @@ stage's share; `fps1`, `fps3`, `scroll` and `battle` are the ones to watch.
 - `cd web && pnpm test` converts `tmp/ta-demo/Total Annihilation.exe`
   through Pyodide in Node, about two minutes, and checks every file against
   `dist/`. It skips itself without the installer, as on GitHub's runners.
-  Run it after any change to `tools/*.py`.
+  Run it after any change to `tools/*.py`. The web converter does the demo
+  only; the full game's CDs and films are `build.sh --full`'s.
+- TA's data has its typos: numbers such as `3.6.`, a script moving a unit
+  to x 81200. Read it forgivingly, and keep what it says within range.
 
 ## The web converter
 

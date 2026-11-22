@@ -4,85 +4,327 @@
  */
 
 /*
- * Sound effects (see snd.h).
+ * The mixer (see snd.h).
+ *
+ * DMA sound plays RING samples in ST-RAM over and over. snd_update() finds
+ * where it plays and mixes from where the last mixing stopped up to a lead
+ * ahead of it: enough to cover the frames to come, and no more, as an
+ * effect started now is heard only after what is mixed already. The lead
+ * grows when frames take long. The stream is read from its file into a
+ * ring of its own in any RAM, STREAM_READ bytes at a time, well ahead.
  */
 #include "snd.h"
 #include <string.h>
+#include <stdio.h>
+#include <mint/osbind.h>
 #include "data.h"
 #include "tt.h"
 
-/* A stream plays at 12517 Hz through a ring in ST-RAM of two halves: while
- * DMA sound plays one, the other is filled with what comes next. Sample
- * stream_next goes into half (stream_next / HALF) & 1. */
-#define HALF 32768L
+#define RING 8192L        /* the DMA ring: 0.65 seconds */
+#define LEAD_MIN 1600     /* samples mixed ahead of the DMA at least: 0.13 seconds */
+#define CHUNK 512         /* samples mixed at a time */
+#define NCHAN 4
+#define SBUF 65536L       /* the stream's ring */
+#define STREAM_READ 8192L /* bytes read from its file at a time */
 
 int snd_enabled = 1;
-static int cur_prio;
-static uint32_t last_start;
+int snd_music_on = 1;
+
+typedef struct {
+    const int8_t* p;
+    int32_t left;   /* samples still to play, at its own rate */
+    uint8_t half;   /* a 6258 Hz sound: each sample twice */
+    uint8_t odd;    /* which of the two */
+    int16_t prio, id;
+    uint32_t start; /* HZ200 when it started */
+} Chan;
+
 static int8_t* ring;
-static const int8_t* stream;
-static int32_t stream_len, stream_next;
+static int32_t fill;       /* the ring's next sample to mix */
+static int32_t last_play;  /* where the DMA was at the last update */
+static int32_t last_ahead; /* how far mixing was ahead of it then */
+static uint32_t last_hz;
+static Chan ch[NCHAN];
+static int8_t clamp_tab[2048]; /* a sum -1024..1023 as a sample */
+
+static int8_t* sbuf;
+static long sfh = -1;
+static int32_t s_read, s_written; /* the stream's samples taken and read in, from its start */
+static int s_eof, s_half_volume;
+
+/* the music: which track plays, whether the loud ones are wanted, and
+ * whether its files are missing */
+static int music_track = -1, music_battle, music_missing;
+static uint32_t calm_since;
+
+int snd_init(void) {
+    int i;
+    for (i = 0; i < 2048; i++) {
+        int v = i - 1024;
+        clamp_tab[i] = (int8_t)(v < -128 ? -128 : v > 127 ? 127 : v);
+    }
+    ring = tt_alloc_st(RING);
+    sbuf = tt_alloc_any(SBUF);
+    if (!ring || !sbuf)
+        return 0;
+    memset(ring, 0, RING);
+    fill = 0;
+    last_play = 0;
+    last_ahead = 0;
+    last_hz = HZ200;
+    tt_sound_loop(ring, RING, 1);
+    return 1;
+}
+
+static void stream_close(void) {
+    if (sfh >= 0)
+        (void)Fclose((short)sfh);
+    sfh = -1;
+    s_read = s_written = 0;
+    s_eof = 1;
+}
+
+void snd_exit(void) {
+    tt_sound_stop();
+    stream_close();
+}
 
 void snd_play(int id, int prio) {
-    if (!snd_enabled || id < 0 || id >= sounds.n || !sounds.data)
+    int i, pick = -1;
+    Chan* c;
+    if (!snd_enabled || !ring || id < 0 || id >= sounds.n || !sounds.data)
         return;
-    if (tt_sound_busy()) {
-        /* let a sound play a moment before one of its own rank cuts it off */
-        if (prio < cur_prio || (prio == cur_prio && HZ200 - last_start < 16))
+    for (i = 0; i < NCHAN; i++) {
+        c = &ch[i];
+        if (c->left > 0 && c->id == id && HZ200 - c->start < 12)
+            return; /* a volley sounds once */
+    }
+    for (i = 0; i < NCHAN; i++)
+        if (ch[i].left <= 0) {
+            pick = i;
+            break;
+        }
+    if (pick < 0) {
+        /* the one that matters least, the oldest of those */
+        for (i = 0; i < NCHAN; i++)
+            if (ch[i].prio <= prio &&
+                (pick < 0 || ch[i].prio < ch[pick].prio ||
+                 (ch[i].prio == ch[pick].prio && ch[i].start < ch[pick].start)))
+                pick = i;
+        if (pick < 0)
             return;
     }
-    cur_prio = prio;
-    last_start = HZ200;
-    tt_sound_play(sounds.data + sounds.ofs[id], (int32_t)sounds.len[id], sounds.rate[id]);
+    c = &ch[pick];
+    c->p = sounds.data + sounds.ofs[id];
+    c->left = (int32_t)sounds.len[id];
+    c->half = !sounds.rate[id];
+    c->odd = 0;
+    c->prio = (int16_t)prio;
+    c->id = (int16_t)id;
+    c->start = HZ200;
 }
 
-/* Fills the next half of the ring with what comes next, or silence */
-static void fill_half(void) {
-    int8_t* d = ring + ((stream_next / HALF) & 1) * HALF;
-    int32_t n = stream_len - stream_next;
-    if (n < 0)
-        n = 0;
-    if (n > HALF)
-        n = HALF;
-    memcpy(d, stream + stream_next, (size_t)n);
-    memset(d + n, 0, (size_t)(HALF - n));
-    stream_next += HALF;
+/* Reads more of the stream's file when its ring has room */
+static void stream_read(void) {
+    while (sfh >= 0 && !s_eof && s_written - s_read <= SBUF - STREAM_READ) {
+        long got = Fread((short)sfh, STREAM_READ, sbuf + (s_written & (SBUF - 1)));
+        if (got > 0)
+            s_written += got;
+        if (got < STREAM_READ)
+            s_eof = 1;
+    }
 }
 
-void snd_stream(const int8_t* data, int32_t len) {
-    snd_stop();
-    if (!snd_enabled || !(ring = tt_alloc_st(2 * HALF)))
-        return;
-    stream = data;
-    stream_len = len;
-    stream_next = 0;
-    fill_half();
-    fill_half();
-    cur_prio = 9;
-    tt_sound_loop(ring, 2 * HALF, 1);
+int snd_stream_file(const char* name) {
+    stream_close();
+    if (!snd_enabled || !ring)
+        return 0;
+    sfh = Fopen(name, 0);
+    if (sfh < 0)
+        return 0;
+    s_eof = 0;
+    s_half_volume = 0;
+    stream_read();
+    return 1;
 }
 
-void snd_stream_update(void) {
-    int playing;
+int snd_stream_busy(void) {
+    return sfh >= 0 && !(s_eof && s_read >= s_written);
+}
+
+/* Mixes n samples (n <= CHUNK) into the ring from fill on, wrapping. The
+ * stream and four effects sum to within -640..639, inside clamp_tab. */
+static void mix(int n) {
+    int16_t acc[CHUNK];
+    int i, k, any = 0;
+    int8_t* d;
+    int first;
+    /* the stream, in runs up to its ring's end */
+    if (snd_stream_busy()) {
+        int32_t have = s_written - s_read;
+        int m = have < n ? (int)have : n, done = 0;
+        while (done < m) {
+            int32_t r = s_read & (SBUF - 1);
+            int run = m - done < SBUF - r ? m - done : (int)(SBUF - r);
+            const int8_t* sp = sbuf + r;
+            int16_t* ap = acc + done;
+            if (s_half_volume)
+                for (i = 0; i < run; i++)
+                    ap[i] = (int16_t)(sp[i] >> 1);
+            else
+                for (i = 0; i < run; i++)
+                    ap[i] = sp[i];
+            s_read += run;
+            done += run;
+        }
+        for (i = m; i < n; i++)
+            acc[i] = 0;
+        if (s_eof && s_read >= s_written)
+            stream_close();
+        any = 1;
+    } else {
+        memset(acc, 0, n * sizeof acc[0]);
+    }
+    /* the effects */
+    for (k = 0; k < NCHAN; k++) {
+        Chan* c = &ch[k];
+        const int8_t* p;
+        if (c->left <= 0)
+            continue;
+        any = 1;
+        p = c->p;
+        if (!c->half) {
+            int m = c->left < n ? (int)c->left : n;
+            for (i = 0; i < m; i++)
+                acc[i] += p[i];
+            c->p += m;
+            c->left -= m;
+        } else {
+            int odd = c->odd;
+            for (i = 0; i < n && c->left > 0; i++) {
+                acc[i] += *p;
+                if (odd) {
+                    p++;
+                    c->left--;
+                }
+                odd ^= 1;
+            }
+            c->p = p;
+            c->odd = (uint8_t)odd;
+        }
+    }
+    /* into the ring, in two runs at most */
+    d = ring + fill;
+    first = RING - fill < n ? (int)(RING - fill) : n;
+    if (!any) {
+        memset(d, 0, (size_t)first);
+        memset(ring, 0, (size_t)(n - first));
+    } else {
+        const int8_t* ct = clamp_tab + 1024;
+        for (i = 0; i < first; i++)
+            d[i] = ct[acc[i]];
+        for (; i < n; i++)
+            ring[i - first] = ct[acc[i]];
+    }
+    fill = (fill + n) & (RING - 1);
+}
+
+void snd_update(void) {
+    int32_t play, ahead, elapsed, lead;
+    uint32_t now = HZ200, dt = now - last_hz;
     if (!ring)
         return;
-    playing = tt_sound_pos() >= ring + HALF;
-    if (playing == ((stream_next / HALF) & 1))
-        return;
-    /* the half playing holds what comes before stream_next: silence once
-     * that is past the end */
-    if (stream_next - HALF >= stream_len) {
+    last_hz = now;
+    if (!snd_enabled) {
         snd_stop();
-        return;
     }
-    fill_half();
+    stream_read();
+    play = (int32_t)(tt_sound_pos() - ring);
+    if (play < 0 || play >= RING)
+        play = 0;
+    elapsed = (play - last_play) & (RING - 1);
+    ahead = (fill - play) & (RING - 1);
+    /* what the DMA played since is silenced, so that a wait without an
+     * update (a disk read) plays silence, not the ring over again */
+    if (elapsed) {
+        int32_t first = RING - last_play < elapsed ? RING - last_play : elapsed;
+        memset(ring + last_play, 0, (size_t)first);
+        memset(ring, 0, (size_t)(elapsed - first));
+    }
+    if (elapsed > last_ahead) {
+        /* the DMA passed what was mixed: start again just ahead of it */
+        fill = (play + 64) & (RING - 1);
+        ahead = 64;
+    }
+    /* enough for the next frames: twice the last one's time, at least LEAD_MIN */
+    lead = (int32_t)(dt > 40 ? 40 : dt) * 12517 / 100;
+    if (lead < LEAD_MIN)
+        lead = LEAD_MIN;
+    if (lead > RING - 1024)
+        lead = RING - 1024;
+    while (ahead < lead) {
+        int n = lead - ahead > CHUNK ? CHUNK : (int)(lead - ahead);
+        mix(n);
+        ahead += n;
+    }
+    last_play = play;
+    last_ahead = ahead;
+}
+
+void snd_silence(void) {
+    snd_stop();
+    if (ring)
+        memset(ring, 0, RING);
 }
 
 void snd_stop(void) {
-    tt_sound_stop();
-    cur_prio = 0;
-    if (ring) {
-        tt_free(ring);
-        ring = 0;
+    int i;
+    for (i = 0; i < NCHAN; i++)
+        ch[i].left = 0;
+    stream_close();
+    music_track = -1;
+}
+
+/* A track of a kind, other than the one that played, chosen at random */
+static int pick_track(int kind) {
+    static uint32_t seed = 7;
+    int i, n = 0, pick;
+    for (i = 0; i < ntracks; i++)
+        if (tracks[i].kind == kind && i != music_track)
+            n++;
+    if (!n)
+        return music_track;
+    seed = seed * 1103515245UL + 12345UL + HZ200;
+    pick = (int)((seed >> 16) % (uint32_t)n);
+    for (i = 0; i < ntracks; i++)
+        if (tracks[i].kind == kind && i != music_track && !pick--)
+            return i;
+    return -1;
+}
+
+void snd_music(int battle) {
+    char name[16];
+    int want, t;
+    if (!ntracks || !snd_enabled || !snd_music_on || !ring || music_missing)
+        return;
+    if (battle) {
+        music_battle = 1;
+        calm_since = HZ200;
+    } else if (music_battle && HZ200 - calm_since > 200 * 30) {
+        music_battle = 0; /* half a minute without fighting */
+    }
+    want = music_battle;
+    /* a battle cuts a calm track short; calm waits for a loud one to end */
+    if (snd_stream_busy() && music_track >= 0 && !(want && !tracks[music_track].kind))
+        return;
+    t = pick_track(want);
+    if (t < 0)
+        return;
+    sprintf(name, "MUSIC%02d.SND", tracks[t].num);
+    if (snd_stream_file(name)) {
+        s_half_volume = 1;
+        music_track = t;
+    } else {
+        music_missing = 1;
     }
 }

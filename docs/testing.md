@@ -12,11 +12,21 @@ program's log is `OALOG.TXT` there, and every shot the script took is a PNG.
 - `PRG` names another program to run, to compare two builds.
 - `PROF=1` also writes Hatari's profile, which `tools/profsum.py` sums per
   function.
+- `DATA` names another folder of data, such as `dist/full` for the full
+  game.
+
+`tools/test_missions.sh SCRIPT [MISSION...]` runs a script on each of the
+full game's missions and skirmish maps in turn, or those named
+(`ac05 cc12 sk01`), with the data in
+`dist/full`: the script's word `MISSION` becomes the mission's name, and a
+line a mission says how it ended and what the units' sprites took.
 
 ## Scripts
 
 A script starts with `mission N DIFFICULTY` (or `menu`, for the menus) and
-then gives one command a line:
+then gives one command a line. N is the mission's number, 1 on, or its
+file's name, such as `ac05`; for a skirmish (`sk01` on), `core` after the
+difficulty plays Core.
 
 | Command | What it does |
 | --- | --- |
@@ -30,7 +40,11 @@ then gives one command a line:
 | `stats`, `units`, `res`, `proj`, `feat` | logs the timings, the units, both players' resources, the shots in flight, or the features in view |
 | `check` | logs where the screen differs from the buffers it is drawn from, and where the background differs from the same drawn afresh |
 | `debug UNIT` | logs a unit's movement and path |
-| `kill TYPE`, `teleport UNIT X Z` | destroys every CORE unit of a type, or moves a unit |
+| `kill TYPE`, `killall`, `teleport UNIT X Z` | destroys every computer unit of a type, or all of them, or moves a unit |
+| `spawn TYPE X Z [1]`, `give TYPE` | puts down a unit of the player's (or with 1 the computer's), or hands the player the computer's first unit of a type, as a capture does |
+| `move UNIT X Z`, `attack UNIT TARGET`, `capture UNIT TARGET` | orders a unit to a place, or to attack or capture another |
+| `explored`, `sprites` | logs the explored map, or what the units' sprites hold |
+| `film N [FRAMES]` | plays a film, or its first frames, and logs how long it took |
 | `result` | logs whether the mission is won or lost |
 | `end`, `quit` | ends the mission, or the program |
 
@@ -47,6 +61,15 @@ The scripts in `tests/` cover:
 - a first look at each mission (`smoke1.txt`, `m2_look.txt`, `m3_look.txt`)
   and the memory left with the largest mission loaded (`mem.txt`)
 - speed (`fps1.txt`, `fps3.txt`, `scroll.txt`)
+
+and, for the full game with `tools/test_missions.sh`, in `tests/full/`:
+
+- a look at a mission's start and whole map, and a few minutes of play
+  (`look.txt`)
+- the mission once every enemy unit is destroyed, won where that is one of
+  its objectives (`win.txt`)
+- ten minutes of a skirmish, the computer building its base and attacking
+  (`skirmish.txt`, on the `sk` maps)
 
 The web converter has its own test: `pnpm test` in `web/` converts the
 installer through Pyodide and checks every file against `dist`

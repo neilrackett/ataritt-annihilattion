@@ -17,7 +17,10 @@ never on a real one.
   text and thin lines flicker on a CRT: a flicker fixer or an upscaler
   takes that away.
 - A Falcon plays no sound at 6258 Hz, so the sound effects made at that
-  rate are doubled to 12517 Hz as they load: about 420 KB more.
+  rate are doubled to 12517 Hz as they load: about 420 KB more for the
+  demo.
+- The full game plays too. Its films need 320x480 in 256 colours, which a
+  Falcon shows on VGA only: on an RGB monitor or a TV they are left out.
 - A stock Falcon has no FPU, without which mintlib's start-up stops the
   program; `src/tt.c` puts its own CPU check in place of mintlib's, asking
   only for a 68030 (the game uses no floating point).

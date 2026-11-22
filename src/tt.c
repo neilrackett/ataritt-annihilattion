@@ -15,6 +15,7 @@
 #define TT_SHIFT (*(volatile uint16_t*)0xFFFF8262UL)
 #define TT_PALETTE ((volatile uint16_t*)0xFFFF8400UL)
 #define TT_MODE_MED 0x0400
+#define TT_MODE_LOW 0x0700
 #define VBASE_HI (*(volatile uint8_t*)0xFFFF8201UL)
 #define VBASE_MID (*(volatile uint8_t*)0xFFFF8203UL)
 #define VBASE_LO (*(volatile uint8_t*)0xFFFF820DUL)
@@ -257,18 +258,64 @@ static void falcon_stop(void) {
     (void)Soundcmd(ADDERIN, (short)falcon_had.adder);
 }
 
+/* ------------------------------------------------------------ either machine's colours */
+
+/* Sets the first n colours (0x0RGB), or black for null: the TT's
+ * registers, or a Falcon's */
+static void set_colours(const uint16_t* pal, int n) {
+    int i;
+    for (i = 0; i < n; i++) {
+        uint16_t c = pal ? pal[i] : 0;
+        if (falcon)
+            FALCON_PALETTE[i] = falcon_colour(c);
+        else
+            TT_PALETTE[i] = c;
+    }
+}
+
+/* ------------------------------------------------------------ the films' mode */
+
+/* The films play in 320x480 with 256 colours: the TT's own TT low, or a
+ * Falcon's on VGA. The screen is the same size as TT medium's. */
+int tt_film_mode(void) {
+    if (falcon && VgetMonitor() != MON_VGA)
+        return 0;
+    memset(tt_front, 0, SCREEN_BYTES);
+    tt_wait_vbl();
+    if (falcon) {
+        (void)VsetScreen(tt_front, tt_front, 3, VGA | COL40 | BPS8);
+        tt_wait_vbl();
+    } else {
+        set_base(tt_front);
+    }
+    set_colours(0, 256);
+    if (!falcon)
+        TT_SHIFT = TT_MODE_LOW;
+    return 1;
+}
+
+void tt_film_palette(const uint16_t* pal) {
+    set_colours(pal, 256);
+}
+
+void tt_film_end(void) {
+    int i;
+    tt_wait_vbl();
+    set_colours(0, 256);
+    if (falcon)
+        (void)VsetScreen(tt_front, tt_front, 3, FALCON_VGA_MODE);
+    else
+        TT_SHIFT = TT_MODE_MED;
+    for (i = 0; i < NSCREENS; i++)
+        memset(tt_screens[i], 0, SCREEN_BYTES);
+    tt_wait_vbl();
+}
+
 /* ------------------------------------------------------------ either machine */
 
 void tt_set_palette(const uint16_t* pal) {
-    int i;
     memcpy(shown_palette, pal, sizeof shown_palette);
-    if (falcon) {
-        for (i = 0; i < 16; i++)
-            FALCON_PALETTE[i] = falcon_colour(pal[i]);
-        return;
-    }
-    for (i = 0; i < 16; i++)
-        TT_PALETTE[i] = pal[i];
+    set_colours(pal, 16);
 }
 
 void tt_get_palette(uint16_t* pal) {
@@ -390,9 +437,7 @@ int tt_shift(void) {
     return ((s & 3) ? 1 : 0) | ((s & 4) ? 2 : 0) | ((s & 8) ? 4 : 0);
 }
 
-/* Starts DMA sound over len samples from start: ctrl 1 plays them once,
- * 3 over and over */
-static void sound_start(const int8_t* start, int32_t len, int rate, uint8_t ctrl) {
+void tt_sound_loop(const int8_t* start, int32_t len, int rate) {
     uint32_t a = (uint32_t)start, e = a + (uint32_t)len;
     SND_CTRL = 0;
     SND_START_HI = (uint8_t)(a >> 16);
@@ -402,15 +447,7 @@ static void sound_start(const int8_t* start, int32_t len, int rate, uint8_t ctrl
     SND_END_MID = (uint8_t)(e >> 8);
     SND_END_LO = (uint8_t)e;
     SND_MODE = (uint8_t)(0x80 | (rate & 3));
-    SND_CTRL = ctrl;
-}
-
-void tt_sound_play(const int8_t* start, int32_t len, int rate) {
-    sound_start(start, len, rate, 1);
-}
-
-void tt_sound_loop(const int8_t* start, int32_t len, int rate) {
-    sound_start(start, len, rate, 3);
+    SND_CTRL = 3; /* over and over */
 }
 
 static uint32_t sound_counter(void) {
@@ -429,8 +466,4 @@ const int8_t* tt_sound_pos(void) {
 
 void tt_sound_stop(void) {
     SND_CTRL = 0;
-}
-
-int tt_sound_busy(void) {
-    return SND_CTRL & 1;
 }

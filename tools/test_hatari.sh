@@ -20,7 +20,7 @@ R=$REPO/tmp/runs/$NAME
 rm -rf "$R"; mkdir -p "$R/hd"
 # the data is linked, not copied; only the files the program reads, so that
 # nothing written in the run's folder reaches DATA through a link
-for f in "$DATA"/*.DAT "$DATA"/*.IMG "$DATA"/*.SND "$DATA"/BRIEF*.TXT; do
+for f in "$DATA"/*.DAT "$DATA"/*.IMG "$DATA"/*.SND "$DATA"/*.SPR "$DATA"/[A-Z][A-Z][0-9][0-9].TXT; do
   ln "$f" "$R/hd/" 2>/dev/null || cp "$f" "$R/hd/"
 done
 cp "${PRG:-$GAME/ANNIHILA.TOS}" "$R/hd/ANNIHILA.TOS"
@@ -28,7 +28,7 @@ cp "$TEST" "$R/hd/OATEST.TXT"
 : > "$R/hatari.cfg"
 SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy "$HATARI" --configfile "$R/hatari.cfg" \
   "${HATARI_FLAGS[@]}" --fast-forward ${FAST:-on} --sound 44100 --statusbar off --alert-level fatal --conout 2 --cmd-fifo "$R/fifo" \
-  --harddrive "$R/hd" --auto 'C:\ANNIHILA.TOS' > "$R/log" 2>&1 &
+  --harddrive "$R/hd" --auto 'C:\ANNIHILA.TOS' --screenshot-dir "$R" > "$R/log" 2>&1 &
 HP=$!
 if [ -n "${PROF:-}" ]; then
   # profile from when the mission is loaded until the script ends

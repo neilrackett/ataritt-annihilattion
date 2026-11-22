@@ -1,0 +1,11 @@
+# Copyright (C) 2026 Neil Rackett
+# SPDX-License-Identifier: GPL-3.0-or-later
+# A full game's mission (tools/test_missions.sh) with every enemy unit
+# destroyed: those whose objectives that meets end at result 1
+mission MISSION 1
+fast
+wait 5
+killall
+wait 40
+result
+end

@@ -1,48 +1,84 @@
 # Playing AnnihilaTTion
 
+AnnihilaTTion plays whichever data you give it: the free demo's, or the full
+game's, converted from your own CDs ([building](building.md)).
+
 ## What it plays
+
+The demo:
 
 - The Arm campaign of the Total Annihilation demo: **1: A Hero Returns**,
   **2: CORE KBot Base, Destroy It!** and **3: Spider Technology**, each at
   Easy, Medium or Hard (the missions' own three unit layouts), with their
   briefings and spoken narration.
-- The missions' own objectives: reach the Galactic Gate; destroy the CORE
-  KBot Lab; bring a Spider home. Losing the Commander, the Gate, every Spider
-  or every unit loses the mission, as the mission files say.
-- The CORE units follow the missions' scripts (patrols, waits, attacks on
-  named unit types, factories building on a timer); the computer player also
-  builds from idle factories and sends groups of idle units to attack.
-- The demo's 32 Arm and CORE units, drawn from their 3D models in 16
-  directions, with their weapons (lasers, cannons, rockets, the E.M.G., the
-  Spider's paralyzer, the Commander's D-gun), wrecks to reclaim, trees for
-  energy, metal deposits for extractors, solar collectors and wind
-  generators, labs and vehicle plants with their build queues, and
-  construction by the Commander's and construction units' nanolathes.
-- Total Annihilation's screen layout at 640x480: the side panel with the
-  minimap, BUILD and ORDERS pages and the unit pictures, the metal and energy
-  bars at the top, the unit bar at the bottom; the game's fonts, cursors,
-  buttons and menu pictures; line of sight (CORE units show only where yours
-  can see), and the map black, on the battlefield and the minimap, until
-  your units have explored it.
+- The demo's 32 Arm and CORE units.
+
+The full game:
+
+- Both campaigns, Arm's and Core's, 25 missions each, at Easy, Medium or
+  Hard, with their briefings and narration. A campaign opens its missions
+  as you win them, and remembers how far you got (`PROGRESS.DAT`).
+- All 157 of the game's units: KBots and vehicles, aircraft, ships and
+  submarines, amphibious tanks, and the buildings that make and use them,
+  from shipyards and air plants to fusion plants, metal makers, radar,
+  geothermal plants on their vents, tidal generators on the water, nuclear
+  missile silos and the systems that shoot their missiles down.
+- Skirmishes on 24 of the multiplayer maps, as Arm or Core: your Commander
+  against the computer's, each from nothing, the computer building its base
+  as a player would (extractors, power, factories, defences) and attacking.
+- The CD's music, calm while you build and loud while you fight, and the
+  films: the Cavedog logo and the introduction at the start, and each side's
+  victory and the credits at the end of its campaign.
+
+In both:
+
+- The missions' own objectives: destroying the enemy, capturing a Gate or a
+  unit, building a shipyard, reaching a place, killing a Commander, getting
+  a ship past a line. Winning any of a mission's objectives wins it; losing
+  the Commander, a unit you must keep, or every unit loses it, as the
+  mission files say. A timed mission counts down at the bottom of the screen.
+- The enemy follows the missions' scripts (patrols, waits, attacks on named
+  unit types, factories building on a timer, crawling bombs blowing up); the
+  computer player also builds from idle factories, sends groups of idle
+  units at whatever of yours they can reach, and fires its missiles.
+- Units drawn from their 3D models in 16 directions, with their weapons
+  (lasers, cannons, rockets and missiles, the E.M.G., the Spider's
+  paralyzer, the Commander's D-gun, bombs, torpedoes, nuclear missiles),
+  wrecks to reclaim, trees for energy, metal deposits for extractors, and
+  construction by nanolathe. Commanders capture enemy units; construction
+  units repair yours.
+- Total Annihilation's screen layout at 640x480, with Arm's or Core's panels
+  as you play either side: the side panel with the minimap, BUILD and ORDERS
+  pages and the unit pictures, the metal and energy bars at the top, the
+  unit bar at the bottom; the game's fonts, cursors, buttons and menu
+  pictures; line of sight (enemy units show only where yours can see, and on
+  the minimap where your radar does), and the map black, on the battlefield
+  and the minimap, until your units have explored it.
 
 ## What it leaves out
 
 These are the compromises the TT needs, and they are deliberate:
 
-- 16 colours: one palette chosen for the three green-planet maps and the
-  units, with ordered dithering. The menus and briefings each have their own.
+- 16 colours: a palette for each world, chosen from its maps and the units,
+  with ordered dithering. The menus and briefings each have their own.
 - Units are pictures made from their models, not models drawn in real time:
   no walking legs or turning turrets (a walking unit bobs; a unit faces what
-  it fires at); buildings face one way; no shadows under units.
+  it fires at); buildings face one way; no shadows under units or aircraft.
 - The map view scrolls in 16-pixel steps across and 1-pixel steps down;
   rocks, metal deposits and the trees' shadows are part of the map's tiles.
-  Similar map tiles are drawn with one tile so each map fits in memory.
+  Similar map tiles are drawn with one tile so each map fits in memory: the
+  largest maps lose the most detail.
 - The simulation runs 15 times a second (the original runs 30); units can
   overlap; paths are found on 32-pixel cells; the original's unit scripts
   (COB) do not run.
-- One sound plays at a time: the narration at 12517 Hz, the longer effects
-  at 6258 Hz. No music (the demo has none).
-- No saving, multiplayer, skirmish or options beyond sound and difficulty.
+- Aircraft hover where they stop instead of landing, and transports carry
+  nothing; there is no cloaking, and jammers hide nothing.
+- Sound is mono at 12517 Hz: four effects at a time over the narration or
+  the music. The films play at 15 frames a second, 320x240 in 256 colours,
+  each line on every other line of the screen.
+- The other 13 multiplayer maps are too large for the TT's memory, and a
+  skirmish has one computer player.
+- No saved games, multiplayer or options beyond sound and difficulty.
 
 ## Controls
 
@@ -56,24 +92,30 @@ These are the compromises the TT needs, and they are deliberate:
 | Minimap: left click | Look there |
 | Minimap: right click | Send the selected units there |
 | Screen edges, arrow keys | Scroll |
-| M, A, S, P, G, D, R | Move, Attack, Stop, Patrol, Guard, D-gun, Reclaim |
+| M, A, S, P, G, D, R | Move, Attack, Stop, Patrol, Guard, D-gun (or a silo's missile), Reclaim |
+| T, E | Capture, Repair |
 | B, O | The side panel's BUILD or ORDERS page |
 | C | Find the Commander |
 | Ctrl+A | Select every unit |
 | Esc | Pause (Q then quits the mission) |
 | X | Sound on or off |
+| On the title: I, C | The introduction, or the credits (the full game) |
 
-On the side panel, BUILD shows what the selected builder makes: click a
-picture, then a place on the map (green: it can go there). For a lab or a
-plant, a left click adds one to its queue (Shift: five) and a right click
-takes one away. Pointing at a build picture shows its cost.
+On the side panel, BUILD shows what the selected builder makes, as far as
+the mission allows: click a picture, then a place on the map (green: it can
+go there). For a factory, a left click adds one to its queue (Shift: five)
+and a right click takes one away. Pointing at a build picture shows its
+cost. A key or a click skips a film.
 
 ## On the TT
 
 - TOS 3.06 with 2 MB of ST-RAM and 4 MB of TT-RAM: the program loads into
-  TT-RAM and keeps the screens and sounds in ST-RAM. A briefing's narration
-  loads into TT-RAM and plays through 64 KB of ST-RAM. With
-  mission 3 loaded about 1 MB of each is still free.
+  TT-RAM and keeps the screens and sounds in ST-RAM. A mission's map takes
+  up to about 1.9 MB, and the units' sprites the TT-RAM left over (about
+  1 MB); they are read from the disk as units come into view.
+- The narration, the music and the films are read from the disk as they
+  play: the full game needs a hard disk, not floppies. Its data takes about
+  300 MB, a third of it the films.
 - It needs the TT's own video, and stops with a message on any other machine
   but a Falcon ([an experiment](falcon.md)).
 - The 68030's caches are switched on while it runs, and put back on exit.

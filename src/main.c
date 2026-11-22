@@ -4,13 +4,16 @@
  */
 
 /*
- * AnnihilaTTion: the Total Annihilation demo's three Arm missions in TT
- * medium resolution. The title menu, the briefings, and the scripted test
- * driver (OATEST.TXT beside the data) that automated checks use.
+ * AnnihilaTTion: Total Annihilation in TT medium resolution, the demo's
+ * three Arm missions or the full game's two campaigns, as the data beside
+ * it holds. The title menu, the campaigns' menus, the briefings, and the
+ * scripted test driver (OATEST.TXT beside the data) that automated checks
+ * use.
  */
 #include <string.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <stdlib.h>
 #include <mint/osbind.h>
 #include "tt.h"
 #include "gfx.h"
@@ -18,9 +21,87 @@
 #include "sim.h"
 #include "snd.h"
 #include "game.h"
+#include "sprites.h"
+#include "film.h"
 
-static char mission_names[NMISSIONS][40]; /* from the missions' files */
 static const char* difficulty_names[3] = {"Easy", "Medium", "Hard"};
+
+/* How far the player has got in each campaign: the missions open to play,
+ * kept in PROGRESS.DAT */
+static uint8_t progress[8];
+
+static void load_progress(void) {
+    long fh = Fopen("PROGRESS.DAT", 0);
+    int i;
+    memset(progress, 1, sizeof progress);
+    if (fh >= 0) {
+        (void)Fread((short)fh, sizeof progress, progress);
+        (void)Fclose((short)fh);
+    }
+    for (i = 0; i < (int)sizeof progress; i++)
+        if (!progress[i])
+            progress[i] = 1;
+}
+
+static void save_progress(void) {
+    long fh = Fcreate("PROGRESS.DAT", 0);
+    if (fh >= 0) {
+        (void)Fwrite((short)fh, sizeof progress, progress);
+        (void)Fclose((short)fh);
+    }
+}
+
+/* The campaign a mission is in */
+static int campaign_of(int m) {
+    int c;
+    for (c = 0; c < ncampaigns; c++)
+        if (m >= campaigns[c].first && m < campaigns[c].first + campaigns[c].count)
+            return c;
+    return 0;
+}
+
+/* What skips a film: a key or a click; in a test, its frames running out */
+static int film_frames_left = -1;
+static uint8_t film_buttons;
+
+static int film_skip(int shown) {
+    uint8_t b = mouse_buttons, pressed = (uint8_t)(b & ~film_buttons);
+    if (film_frames_left >= 0)
+        return shown >= film_frames_left;
+    film_buttons = b;
+    return tt_key() != 0 || (pressed & 3);
+}
+
+/* Plays a film when the data has it; 1 when it played */
+static int film(int n) {
+    int k;
+    film_buttons = mouse_buttons;
+    k = film_play(n, film_skip);
+    return k >= 0;
+}
+
+/* The side the player takes in a skirmish: 0 Arm, 1 Core */
+static int skirmish_side;
+
+/* Readies a loaded mission: a skirmish's computer builds its base, and the
+ * player playing Core takes the second start, the computer the first */
+static void prepare_mission(int m) {
+    int i, j;
+    if (campaigns[campaign_of(m)].side != 2)
+        return;
+    mission.skirmish = 1;
+    if (!skirmish_side)
+        return;
+    mission.side = 1;
+    for (i = 0; i < mission.nschema; i++)
+        for (j = 0; j < mission.schema[i].nunits; j++)
+            mission.schema[i].units[j].player ^= 1;
+}
+
+/* The demo: one campaign of a few missions, chosen on its own screen */
+static int is_demo(void) {
+    return ncampaigns == 1 && campaigns[0].count <= 3;
+}
 
 /* ------------------------------------------------------------ the test driver */
 
@@ -28,6 +109,7 @@ static char* test_text;
 static char* test_cur;
 static int test_wait;
 static int test_mission = -1, test_difficulty = 1;
+static char test_mission_name[16]; /* named in the header, found once GAME.DAT is read */
 static long logfh = -1;
 static int test_quit;
 
@@ -193,6 +275,45 @@ static int test_next(void) {
                     n++;
                 }
             test_log("killed %d %s", n, nm);
+        } else if (!strcmp(word, "killall")) {
+            int i, n = 0;
+            for (i = 0; i < unit_hi; i++)
+                if (units[i].alive && units[i].owner == ENEMY) {
+                    sim_kill(i);
+                    n++;
+                }
+            test_log("killed %d", n);
+        } else if (!strcmp(word, "give") || !strcmp(word, "spawn")) {
+            char nm[16];
+            int i, t = -1;
+            a = b = c = 0;
+            sscanf(line + strlen(word), "%15s %d %d %d", nm, &a, &b, &c);
+            for (i = 0; i < nunittypes; i++)
+                if (!strcmp(unittypes[i].name, nm))
+                    t = i;
+            if (word[0] == 'g') {
+                for (i = 0; i < unit_hi; i++)
+                    if (units[i].alive && units[i].owner == ENEMY && units[i].type == t) {
+                        sim_capture(i, PLAYER);
+                        break;
+                    }
+                test_log("gave %s: unit %d", nm, i < unit_hi ? i : -1);
+            } else {
+                test_log("spawned %s: unit %d", nm, t >= 0 ? sim_spawn(t, c ? ENEMY : PLAYER, a, b) : -1);
+            }
+        } else if (!strcmp(word, "move") || !strcmp(word, "attack") || !strcmp(word, "capture")) {
+            sscanf(line + strlen(word), "%d %d %d", &a, &b, &c);
+            if (a >= 0 && a < unit_hi && units[a].alive) {
+                if (word[0] == 'm') {
+                    order_at(&units[a], O_MOVE, b, c, 0);
+                } else {
+                    Order o;
+                    memset(&o, 0, sizeof o);
+                    o.kind = word[0] == 'a' ? O_ATTACK : O_CAPTURE;
+                    o.target = (int16_t)b;
+                    order_add(&units[a], &o, 0);
+                }
+            }
         } else if (!strcmp(word, "teleport")) {
             sscanf(line + 8, "%d %d %d", &a, &b, &c);
             units[a].x = (int32_t)b << FIX;
@@ -229,6 +350,22 @@ static int test_next(void) {
             game_follow(sscanf(line + 6, "%d", &a) == 1 ? a : 1);
         } else if (!strcmp(word, "explore")) {
             game_explore_all();
+        } else if (!strcmp(word, "explored")) {
+            game_log_explored();
+        } else if (!strcmp(word, "film")) {
+            uint32_t t0 = HZ200;
+            int k;
+            a = 0;
+            b = -1;
+            sscanf(line + 4, "%d %d", &a, &b);
+            film_frames_left = b;
+            k = film_play(a, film_skip);
+            film_frames_left = -1;
+            test_log("film %d: %d frames in %ld ms", a, k, (long)(HZ200 - t0) * 5);
+        } else if (!strcmp(word, "sprites")) {
+            int32_t used, size;
+            int n = spr_stats(&used, &size);
+            test_log("sprites: %d types held, %ld of %ld bytes", n, (long)used, (long)size);
         } else if (!strcmp(word, "res")) {
             for (a = 0; a < 2; a++)
                 test_log(
@@ -258,10 +395,17 @@ static int load_test(void) {
         return 0;
     test_cur = test_text;
     logfh = Fcreate("OALOG.TXT", 0);
-    /* the header: the mission to start */
+    /* the header: the mission to start, by number (1 on) or by its file's name */
     while (next_line(line, sizeof line)) {
         if (!strncmp(line, "mission", 7)) {
-            sscanf(line + 7, "%d %d", &test_mission, &test_difficulty);
+            char which[16], side[8] = "";
+            if (sscanf(line + 7, "%15s %d %7s", which, &test_difficulty, side) >= 1) {
+                skirmish_side = !strcmp(side, "core");
+                if (which[0] >= '0' && which[0] <= '9')
+                    test_mission = atoi(which);
+                else
+                    strcpy(test_mission_name, which);
+            }
             break;
         }
         if (!strncmp(line, "menu", 4))
@@ -307,6 +451,18 @@ static void text_centre(uint8_t* scr, int y, const char* s, int colour) {
     gfx_text(scr, (SCREEN_W - gfx_text_width(s)) / 2, y, s, colour);
 }
 
+/* A screen of text: its picture, or black, and a box framed in grey with a title */
+static void boxed_screen(uint8_t* pic, const char* title) {
+    if (pic)
+        show_picture(pic, tt_back);
+    else
+        memset(tt_back, 0, SCREEN_BYTES);
+    gfx_clip_full();
+    gfx_fill(tt_back, 40, 40, 600, 410, C_BLACK);
+    gfx_rect(tt_back, 40, 40, 600, 410, C_GREY);
+    gfx_text(tt_back, 60, 52, title, C_WHITE);
+}
+
 static int in_slot(const Slot* sl, int x, int y) {
     return x >= sl->x0 - 2 && x <= sl->x1 + 2 && y >= sl->y0 - 2 && y <= sl->y1 + 2;
 }
@@ -331,6 +487,7 @@ static int menu_input(int* x, int* y, uint8_t* prev, uint16_t* key) {
     int pressed;
     if (test_hooks.next && test_hooks.next() < 0)
         test_quit = 1;
+    snd_update();
     *x = input_x();
     *y = input_y();
     b = (uint8_t)input_buttons();
@@ -356,12 +513,15 @@ static void help_screen(void) {
         "BUILD shows what the selected builder can make: click a picture, then a place on the map. "
         "For a factory, left click adds one to its queue (shift: five) and right click takes one "
         "away. "
-        "ORDERS holds Move, Attack, Stop, Patrol, Guard, D-Gun and Reclaim. "
+        "ORDERS holds Move, Attack, Stop, Patrol, Guard, D-Gun (and a silo's missile), Reclaim, "
+        "Capture and Repair. "
         "Click the minimap to look somewhere; right click it to send the selection there.\n\n"
         "&YKEYS&W\n"
-        "M move, A attack, S stop, P patrol, G guard, D D-gun, R reclaim, B build menu, O orders, "
+        "M move, A attack, S stop, P patrol, G guard, D D-gun, R reclaim, T capture, E repair, "
+        "B build menu, O orders, "
         "C find the Commander, Ctrl+A select every unit, arrows or the screen edges scroll, "
-        "Esc pauses (Q in the pause quits the mission), X turns sound off and on.\n\n"
+        "Esc pauses (Q in the pause quits the mission), X turns sound off and on. "
+        "On the title, I shows the introduction and C the credits.\n\n"
         "&YRESOURCES&W\n"
         "Metal comes from extractors on metal deposits and from reclaiming wrecks; energy from "
         "solar collectors, "
@@ -370,12 +530,7 @@ static void help_screen(void) {
     if (pic)
         tt_set_palette(pal);
     for (;;) {
-        if (pic)
-            show_picture(pic, tt_back);
-        gfx_clip_full();
-        gfx_fill(tt_back, 40, 40, 600, 410, C_BLACK);
-        gfx_rect(tt_back, 40, 40, 600, 410, C_GREY);
-        gfx_text(tt_back, 60, 52, "HOW TO PLAY", C_WHITE);
+        boxed_screen(pic, "HOW TO PLAY");
         gfx_text_box(tt_back, 60, 76, 520, help, C_SILVER);
         gfx_text(tt_back, 200, 428, "Click or press a key to go back", C_YELLOW);
         draw_arrow(tt_back, input_x(), input_y());
@@ -416,6 +571,12 @@ static int title_screen(uint8_t* pic, const uint16_t* pal) {
             return 0;
         if ((k >> 8) == 1 || (k & 0xDF) == 'Q')
             return -1;
+        /* the films, where the data has them: I the introduction, C the credits */
+        if ((k & 0xDF) == 'I' || (k & 0xDF) == 'C') {
+            if (film((k & 0xDF) == 'I' ? FILM_INTRO : FILM_CREDITS))
+                tt_set_palette(pal);
+            prev = (uint8_t)input_buttons();
+        }
         if (click && hover >= 0) {
             snd_play(SND_BUTTON, 1);
             if (hover == 0)
@@ -433,12 +594,15 @@ static int title_screen(uint8_t* pic, const uint16_t* pal) {
     }
 }
 
-/* The mission choice: 0..2, or -1 to go back */
+/* The single player screen: in its first slots the demo's missions, or the
+ * full game's campaigns; then the difficulty and BACK. Returns the one
+ * chosen (a mission for the demo, a campaign else), or -1 to go back */
 static int single_screen(int* difficulty, const char* note) {
     uint16_t pal[16];
     uint8_t* pic = load_picture("SINGLE.IMG", pal);
     uint8_t prev = (uint8_t)input_buttons();
-    int result = -1;
+    int demo = is_demo(), result = -1;
+    int n = demo ? campaigns[0].count : ncampaigns < 3 ? ncampaigns : 3, ty = demo ? 220 : 400;
     if (pic)
         tt_set_palette(pal);
     for (;;) {
@@ -454,26 +618,32 @@ static int single_screen(int* difficulty, const char* note) {
         gfx_clip_full();
         for (i = 0; i < 5; i++) {
             char s[32];
+            if (i < n && demo)
+                sprintf(s, "MISSION %d", i + 1);
+            else if (i < n)
+                strcpy(s, campaigns[i].name);
+            else if (i == 3)
+                strcpy(s, difficulty_names[*difficulty]);
+            else if (i == 4)
+                strcpy(s, "BACK");
+            else
+                continue;
             if (in_slot(&single_slots[i], x, y))
                 hover = i;
-            if (i < NMISSIONS)
-                sprintf(s, "MISSION %d", i + 1);
-            else if (i == 3)
-                sprintf(s, "%s", difficulty_names[*difficulty]);
-            else
-                strcpy(s, "BACK");
             draw_slot(tt_back, &single_slots[i], s, hover == i, 0);
         }
-        gfx_text(tt_back, 60, 110, "ARM CAMPAIGN", C_WHITE);
-        for (i = 0; i < NMISSIONS; i++)
-            gfx_text(tt_back, 60, 140 + i * 22, mission_names[i], hover == i ? C_YELLOW : C_SILVER);
-        gfx_text(tt_back, 60, 220, "Difficulty:", C_SILVER);
-        gfx_text(tt_back, 140, 220, difficulty_names[*difficulty], hover == 3 ? C_YELLOW : C_WHITE);
+        if (demo) {
+            gfx_text(tt_back, 60, 110, campaigns[0].name, C_WHITE);
+            for (i = 0; i < n; i++)
+                gfx_text(tt_back, 60, 140 + i * 22, missions[i].name, hover == i ? C_YELLOW : C_SILVER);
+        }
+        gfx_text(tt_back, 60, ty, "Difficulty:", C_SILVER);
+        gfx_text(tt_back, 140, ty, difficulty_names[*difficulty], hover == 3 ? C_YELLOW : C_WHITE);
         if (note)
-            gfx_text_box(tt_back, 60, 400, 330, note, C_YELLOW);
+            gfx_text_box(tt_back, 60, demo ? 400 : 420, 330, note, C_YELLOW);
         draw_arrow(tt_back, x, y);
         tt_flip();
-        if ((k & 0xFF) >= '1' && (k & 0xFF) < '1' + NMISSIONS) {
+        if ((k & 0xFF) >= '1' && (k & 0xFF) < '1' + n) {
             result = (k & 0xFF) - '1';
             break;
         }
@@ -483,7 +653,7 @@ static int single_screen(int* difficulty, const char* note) {
             *difficulty = (*difficulty + 1) % 3;
         if (click && hover >= 0) {
             snd_play(SND_BUTTON, 1);
-            if (hover < NMISSIONS) {
+            if (hover < n) {
                 result = hover;
                 break;
             }
@@ -504,41 +674,79 @@ static int on_slot(const Slot* sl, int x, int y) {
     return x >= sl->x0 && x <= sl->x1 && y >= sl->y0 && y <= sl->y1;
 }
 
+/* A campaign's missions, those reached open: the one chosen, as an index
+ * in missions[], or -1 to go back */
+static int mission_screen(int c) {
+    const Campaign* cp = &campaigns[c];
+    uint16_t pal[16];
+    uint8_t* pic = load_picture(cp->side == 1 ? "BRIEFCOR.IMG" : "BRIEFARM.IMG", pal);
+    uint8_t prev = (uint8_t)input_buttons();
+    int result = -1, rows = (cp->count + 1) / 2, skirmish = cp->side == 2;
+    if (pic)
+        tt_set_palette(pal);
+    for (;;) {
+        uint16_t k;
+        int i, x, y, hover = -1, click;
+        click = menu_input(&x, &y, &prev, &k);
+        if (test_quit)
+            break;
+        boxed_screen(pic, cp->name);
+        for (i = 0; i < cp->count; i++) {
+            int col = i / rows, row = i % rows, mx = 60 + col * 270, my = 84 + row * 24;
+            int open = skirmish || i < progress[c];
+            if (open && x >= mx - 4 && x < mx + 264 && y >= my - 3 && y < my + 17)
+                hover = i;
+            gfx_text(tt_back, mx, my, missions[cp->first + i].name,
+                     !open ? C_GREY : hover == i ? C_YELLOW : C_SILVER);
+        }
+        draw_slot(tt_back, &back_slot, "BACK", on_slot(&back_slot, x, y), 1);
+        if (skirmish)
+            draw_slot(tt_back, &start_slot, skirmish_side ? "PLAY AS CORE" : "PLAY AS ARM",
+                      on_slot(&start_slot, x, y), 1);
+        draw_arrow(tt_back, x, y);
+        tt_flip();
+        if ((k >> 8) == 1)
+            break;
+        if (click && hover >= 0) {
+            snd_play(SND_BUTTON, 1);
+            result = cp->first + hover;
+            break;
+        }
+        if (skirmish && click && on_slot(&start_slot, x, y)) {
+            snd_play(SND_BUTTON, 1);
+            skirmish_side ^= 1;
+        }
+        if (click && on_slot(&back_slot, x, y))
+            break;
+    }
+    tt_free(pic);
+    return result;
+}
+
 /* The briefing: 1 to start, 0 to go back */
 static int briefing(int m) {
     uint16_t pal[16];
-    uint8_t* pic = load_picture("BRIEF.IMG", pal);
+    int core = campaigns[campaign_of(m)].side == 2 ? skirmish_side : missions[m].side;
+    uint8_t* pic = load_picture(core ? "BRIEFCOR.IMG" : "BRIEFARM.IMG", pal);
     char name[24];
-    int8_t* voice;
-    int32_t vlen = 0;
     char* text;
     uint8_t prev = (uint8_t)input_buttons();
     int result = 1;
-    sprintf(name, "BRIEF%d.TXT", m + 1);
+    sprintf(name, "%s.TXT", missions[m].file);
     text = load_text(name);
-    sprintf(name, "BRIEF%d.SND", m + 1);
-    voice = load_voice(name, &vlen); /* none when RAM is short: the text alone */
+    sprintf(name, "%s.SND", missions[m].file);
     if (pic)
         tt_set_palette(pal);
-    if (voice)
-        snd_stream(voice, vlen);
+    snd_stream_file(name); /* the narration, read from the disk as it plays */
     for (;;) {
         uint16_t k;
         int x, y, click;
-        snd_stream_update();
         click = menu_input(&x, &y, &prev, &k);
         if (test_quit) {
             result = 0;
             break;
         }
-        if (pic)
-            show_picture(pic, tt_back);
-        else
-            memset(tt_back, 0, SCREEN_BYTES);
-        gfx_clip_full();
-        gfx_fill(tt_back, 40, 40, 600, 410, C_BLACK);
-        gfx_rect(tt_back, 40, 40, 600, 410, C_GREY);
-        gfx_text(tt_back, 60, 52, mission_names[m], C_WHITE);
+        boxed_screen(pic, missions[m].name);
         gfx_text_box(tt_back, 60, 80, 520, text ? text : "", C_SILVER);
         draw_slot(tt_back, &start_slot, "START", on_slot(&start_slot, x, y), 1);
         draw_slot(tt_back, &back_slot, "BACK", on_slot(&back_slot, x, y), 1);
@@ -558,7 +766,6 @@ static int briefing(int m) {
         }
     }
     snd_stop();
-    tt_free(voice);
     tt_free(pic);
     tt_free(text);
     return result;
@@ -569,15 +776,17 @@ static void loading(int m) {
     uint16_t pal[16];
     char name[24];
     uint8_t* pic;
-    sprintf(name, "GLAM%d.IMG", m + 1);
+    snd_silence();
+    sprintf(name, "%s.IMG", missions[m].file);
     pic = load_picture(name, pal);
     if (pic) {
         show_picture(pic, tt_back);
         tt_set_palette(pal);
         tt_free(pic);
     } else {
+        static const uint16_t grey[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x777, 0xBBB, 0xFFF};
         memset(tt_back, 0, SCREEN_BYTES);
-        tt_set_palette(common.palette);
+        tt_set_palette(grey);
     }
     gfx_clip_full();
     gfx_fill(tt_back, 240, 440, 400, 464, C_BLACK);
@@ -592,24 +801,84 @@ static int fatal(const char* why) {
     return 1;
 }
 
+/* Plays a mission and the ones after it while they are won (a skirmish
+ * once): 0 back to the menu, 1 when its campaign is won, -1 to quit, or -2
+ * when the game cannot go on (fatal() has said why) */
+static int play_from(int m, int difficulty, const char** note) {
+    int c = campaign_of(m);
+    for (;;) {
+        int r;
+        free_mission();
+        if (!briefing(m) || test_quit)
+            return test_quit ? -1 : 0;
+        loading(m);
+        if (!load_mission(m)) {
+            fatal(data_error());
+            return -2;
+        }
+        prepare_mission(m);
+        r = game_run(difficulty);
+        if (r == GAME_FAILED) {
+            fatal(game_error());
+            return -2;
+        }
+        test_log("game_run returned %d", r);
+        if (test_quit)
+            return -1;
+        if (campaigns[c].side == 2) {
+            if (r)
+                *note = r > 0 ? "&YVictory!&W The enemy Commander is destroyed." : "&RDefeat.&W Your Commander is lost.";
+            return 0;
+        }
+        if (r > 0) {
+            int next = m + 1 - campaigns[c].first;
+            if (next < campaigns[c].count && progress[c] < next + 1) {
+                progress[c] = (uint8_t)(next + 1);
+                save_progress();
+            }
+            if (m + 1 >= campaigns[c].first + campaigns[c].count) {
+                if (is_demo()) {
+                    *note = "&YVictory!&W You have won the Total Annihilation demo campaign.";
+                } else {
+                    *note = campaigns[c].side ? "&YVictory!&W The Core campaign is won."
+                                              : "&YVictory!&W The Arm campaign is won.";
+                    if (film(campaigns[c].side ? FILM_CORE_WINS : FILM_ARM_WINS))
+                        film(FILM_CREDITS);
+                }
+                return 1;
+            }
+            m++;
+            continue;
+        }
+        if (r < 0)
+            continue; /* lost: brief again, to try again */
+        return 0;
+    }
+}
+
 int main(void) {
     uint16_t title_pal[16];
     uint8_t* title;
-    int i, difficulty = 1;
+    int difficulty = 1;
     const char* note = 0;
     if (!tt_init())
         return 1;
     load_test();
-    if (!load_common() || !load_units() || !load_sounds())
+    if (!load_game() || !load_common() || !load_units() || !load_sounds())
         return fatal(data_error());
     gfx_set_font(common.font);
-    for (i = 0; i < NMISSIONS; i++)
-        mission_name(i + 1, mission_names[i]);
+    snd_init();
+    load_progress();
+    if (test_mission_name[0] && (test_mission = find_mission(test_mission_name) + 1) <= 0)
+        return fatal("can't find the test's mission");
     if (test_mission > 0) {
-        int r;
-        loading(test_mission - 1);
-        if (!load_mission(test_mission))
+        int r, m = test_mission - 1;
+        if (m >= nmissions)
+            return fatal("can't find the test's mission");
+        loading(m);
+        if (!load_mission(m))
             return fatal(data_error());
+        prepare_mission(m);
         test_log("mission %d loaded: %s, %d tiles", test_mission, mission.name, mission.ntiles);
         test_log(
             "free memory: ST-RAM %ld, TT-RAM %ld (largest blocks)",
@@ -617,6 +886,10 @@ int main(void) {
             (long)Mxalloc(-1, 1)
         );
         r = game_run(test_difficulty);
+        if (r == GAME_FAILED) {
+            test_log("game_run failed: %s", game_error());
+            r = 0;
+        }
         test_log("game_run returned %d", r);
         if (logfh >= 0)
             (void)Fclose((short)logfh);
@@ -626,36 +899,22 @@ int main(void) {
     title = load_picture("TITLE.IMG", title_pal);
     if (!title)
         return fatal(data_error());
+    /* the logo and the introduction, as TA starts; not for a test's menus */
+    if (!test_hooks.next && film(FILM_LOGO))
+        film(FILM_INTRO);
     while (!test_quit && title_screen(title, title_pal) == 0) {
         for (;;) {
-            int m = single_screen(&difficulty, note), r;
+            int m, r;
+            m = single_screen(&difficulty, note);
             note = 0;
             if (m < 0 || test_quit)
                 break;
-            for (;;) {
-                free_mission();
-                if (!briefing(m) || test_quit)
-                    break;
-                loading(m);
-                if (!load_mission(m + 1))
-                    return fatal(data_error());
-                r = game_run(difficulty);
-                test_log("game_run returned %d", r);
-                if (test_quit)
-                    break;
-                if (r > 0) {
-                    if (m == NMISSIONS - 1) {
-                        note = "&YVictory!&W You have won the Total Annihilation demo campaign.";
-                        break;
-                    }
-                    m++;
-                    continue;
-                }
-                if (r < 0)
-                    continue; /* lost: brief again, to try again */
-                break;
-            }
-            if (test_quit)
+            if (!is_demo() && (m = mission_screen(m)) < 0)
+                continue;
+            r = play_from(m, difficulty, &note);
+            if (r == -2)
+                return 1;
+            if (r < 0 || test_quit)
                 break;
         }
     }

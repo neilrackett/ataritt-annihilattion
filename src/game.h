@@ -17,11 +17,18 @@
 #define VIEW_W 512
 #define VIEW_H 416
 
+#define GAME_FAILED (-2) /* game_run(): the mission could not start (game_error()) */
+
 /// Plays the loaded mission until it is won, lost and clicked away, or quit.
 ///
 /// @param difficulty 0 easy, 1 medium, 2 hard: the mission's unit layout
-/// @return 1 won, -1 lost, 0 quit to the menu
+/// @return 1 won, -1 lost, 0 quit to the menu, or GAME_FAILED
 int game_run(int difficulty);
+
+/// Says why game_run() could not start a mission.
+///
+/// @return words to follow "Sorry, AnnihilaTTion ", such as "needs more free RAM for the units"
+const char* game_error(void);
 
 /// Scripted input for automated checks (main.c reads OATEST.TXT).
 typedef struct {
@@ -59,6 +66,9 @@ void game_follow(int on);
 /// Uncovers the whole map, as if every part of it had been seen (test
 /// scripts, to look at the map).
 void game_explore_all(void);
+
+/// Writes the explored map to the test log, a row of sight cells a line.
+void game_log_explored(void);
 
 /// Writes to the test log up to 8 features in view, with their places on
 /// screen and what reclaiming them gives.

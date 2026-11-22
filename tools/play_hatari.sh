@@ -8,11 +8,15 @@
 # (hatari_tt.sh; MACHINE=falcon for the Falcon experiment), with
 # dist as drive C: and ANNIHILA.TOS started.
 #
-# Environment: as hatari_tt.sh.
+# Environment: as hatari_tt.sh, and DATA, another folder of data to play
+# instead, such as dist/full (the full game): its ANNIHILA.TOS is the
+# newest build's.
 set -eu
 . "$(dirname "$0")/hatari_tt.sh"
 [ -f "$GAME/ANNIHILA.TOS" ] || { echo "No build: run build.sh first." >&2; exit 1; }
-rm -f "$GAME/OATEST.TXT"
+DATA=${DATA:-$GAME}
+[ "$DATA" -ef "$GAME" ] || cp "$GAME/ANNIHILA.TOS" "$DATA/ANNIHILA.TOS"
+rm -f "$DATA/OATEST.TXT"
 CFG=$REPO/tmp/hatari-play.cfg
 : > "$CFG"
-exec "$HATARI" --configfile "$CFG" "${HATARI_FLAGS[@]}" --harddrive "$GAME" --auto 'C:\ANNIHILA.TOS'
+exec "$HATARI" --configfile "$CFG" "${HATARI_FLAGS[@]}" --harddrive "$DATA" --auto 'C:\ANNIHILA.TOS'

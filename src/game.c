@@ -14,6 +14,8 @@
 #include "data.h"
 #include "sim.h"
 #include "snd.h"
+#include "sprites.h"
+#include <mint/osbind.h>
 
 TestHooks test_hooks;
 int32_t game_frames;
@@ -36,7 +38,7 @@ static int nselected;
 
 static int unit_shown(const Unit* u);
 
-enum { M_NONE, M_MOVE, M_ATTACK, M_PATROL, M_GUARD, M_DGUN, M_RECLAIM, M_BUILD };
+enum { M_NONE, M_MOVE, M_ATTACK, M_PATROL, M_GUARD, M_DGUN, M_RECLAIM, M_BUILD, M_CAPTURE, M_REPAIR };
 
 #define EDGE_SPEED 512 /* pixels a second the screen's edges scroll the view */
 
@@ -111,7 +113,7 @@ void game_list_features(void) {
         test_log(
             "feature %d %s on screen at %d,%d metal %ld energy %ld",
             i,
-            common.feat[f->type].name,
+            feat_type(f->type)->name,
             sx,
             sy,
             (long)f->metal,
@@ -228,7 +230,7 @@ static int selected(int sort, int* first) {
             sel_add(SEL_ALL, i);
             if (t->kind == UK_MOBILE)
                 sel_add(SEL_MOBILE, i);
-            if (t->flags & UF_ARMED)
+            if (t->flags & (UF_ARMED | UF_KAMIKAZE))
                 sel_add(SEL_ARMED, i);
             if (t->flags & UF_BUILDER) {
                 sel_add(SEL_BUILDER, i);
@@ -320,7 +322,11 @@ static void order_selected_unit(int kind, int target, int queue) {
         if (!u->alive || !(u->flags & UF_SELECTED) || i == target)
             continue;
         t = &unittypes[u->type];
-        if (kind == O_ATTACK && !(t->flags & UF_ARMED))
+        if (kind == O_ATTACK && !(t->flags & (UF_ARMED | UF_KAMIKAZE)))
+            continue;
+        if (kind == O_CAPTURE && !(t->flags & UF_CAPTURE))
+            continue;
+        if (kind == O_REPAIR && !(t->flags & UF_REPAIR))
             continue;
         if (kind == O_RECLAIM && !((t->flags & UF_BUILDER) && t->kind == UK_MOBILE))
             continue;
@@ -410,6 +416,16 @@ static void click_battlefield(int sx, int sy, int queue) {
         mode = M_NONE;
         return;
     }
+    case M_CAPTURE:
+        if (enemy >= 0)
+            order_selected_unit(O_CAPTURE, enemy, queue);
+        mode = M_NONE;
+        return;
+    case M_REPAIR:
+        if (own >= 0)
+            order_selected_unit(O_REPAIR, own, queue);
+        mode = M_NONE;
+        return;
     case M_DGUN: {
         int i;
         for (i = 0; i < unit_hi; i++) {
@@ -469,7 +485,7 @@ static void box_select(int x0, int y0, int x1, int y1, int add) {
         if (!selectable(u))
             continue;
         ux = u->x >> FIX;
-        uy = unit_screen_y(u);
+        uy = unit_draw_y(u);
         if (ux >= x0 && ux <= x1 && uy >= y0 && uy <= y1) {
             u->flags |= UF_SELECTED;
             n++;
@@ -488,12 +504,20 @@ static void box_select(int x0, int y0, int x1, int y1, int add) {
 #define PIC_Y 154
 #define BTN_Y 154
 
-static int build_option(int unit, int slot) {
+/* What a builder's menu offers: its options the mission lets the player build */
+static int menu_options(int unit, uint8_t* out) {
     const UnitType* t = &unittypes[units[unit].type];
-    int k = build_page * 6 + slot;
-    if (k >= t->nbuild)
-        return -1;
-    return t->build[k];
+    int k, n = 0;
+    for (k = 0; k < t->nbuild; k++)
+        if (build_allowed(t->build[k]))
+            out[n++] = t->build[k];
+    return n;
+}
+
+static int build_option(int unit, int slot) {
+    uint8_t opts[MAX_BUILD];
+    int n = menu_options(unit, opts), k = build_page * 6 + slot;
+    return k < n ? opts[k] : -1;
 }
 
 /* The ORDERS page's buttons and their keys; mode -1 is Stop */
@@ -508,6 +532,8 @@ static const struct {
     {BTN_GUARD, M_GUARD, 6, BTN_Y + 68, 'G'},
     {BTN_DGUN, M_DGUN, 68, BTN_Y + 68, 'D'},
     {BTN_RECLAIM, M_RECLAIM, 6, BTN_Y + 102, 'R'},
+    {BTN_CAPTURE, M_CAPTURE, 68, BTN_Y + 102, 'T'},
+    {BTN_REPAIR, M_REPAIR, 6, BTN_Y + 136, 'E'},
 };
 
 #define NORDER_BUTTONS ((int)(sizeof order_buttons / sizeof order_buttons[0]))
@@ -557,7 +583,8 @@ static void panel_click(int x, int y, int right) {
             return;
         }
         if (y >= PIC_Y + 196 && y < PIC_Y + 216) {
-            int pages = (unittypes[units[mu].type].nbuild + 5) / 6;
+            uint8_t opts[MAX_BUILD];
+            int pages = (menu_options(mu, opts) + 5) / 6;
             build_page = (build_page + (x < 64 ? pages - 1 : 1)) % (pages ? pages : 1);
             snd_play(SND_BUTTON, 1);
         }
@@ -580,26 +607,34 @@ static void panel_click(int x, int y, int right) {
 }
 
 static void draw_button(uint8_t* scr, int b, int x, int y, int lit) {
-    int f = lit && common.button_frames[b] > 1 ? 1 : 0;
-    if (!common.button_frames[b])
+    int f = lit && panel.button_frames[b] > 1 ? 1 : 0;
+    if (!panel.button_frames[b])
         return;
-    gfx_sprite(scr, common_sprite(common.button[b][f]), x, y);
+    gfx_sprite(scr, panel_sprite(panel.button[b][f]), x, y);
 }
 
 static void draw_side_panel(uint8_t* scr) {
     int mu = menu_unit();
+    uint8_t opts[MAX_BUILD];
     char s[32];
     gfx_clip(0, 128, 127, 447);
     draw_button(scr, BTN_BUILD, 4, 132, page == 0);
     draw_button(scr, BTN_ORDERS, 66, 132, page == 1);
     if (page == 0 && mu >= 0) {
         const Unit* u = &units[mu];
-        int slot;
+        int slot, nopts = menu_options(mu, opts);
         for (slot = 0; slot < 6; slot++) {
-            int bt = build_option(mu, slot), px = (slot & 1) * 64, py = PIC_Y + (slot >> 1) * 64, n;
-            if (bt < 0)
+            int k = build_page * 6 + slot, bt, px = (slot & 1) * 64, py = PIC_Y + (slot >> 1) * 64, n;
+            if (k >= nopts)
                 continue;
-            gfx_image(scr, (const uint16_t*)(common.bank + common.pic[bt]), px, py, 4, 64);
+            bt = opts[k];
+            {
+                const uint16_t* pic = unit_pic(bt);
+                if (pic)
+                    gfx_image(scr, pic, px, py, 4, 64);
+                else
+                    gfx_text(scr, px + 4, py + 24, unittypes[bt].name, C_WHITE);
+            }
             n = factory_queued(u, bt);
             if (n) {
                 sprintf(s, "%d", n);
@@ -615,7 +650,7 @@ static void draw_side_panel(uint8_t* scr) {
                 gfx_fill(scr, px + 2, py + 58, px + 2 + w, py + 61, C_GREEN);
             }
         }
-        if (unittypes[u->type].nbuild > 6) {
+        if (nopts > 6) {
             draw_button(scr, BTN_PREV, 8, PIC_Y + 198, 0);
             draw_button(scr, BTN_NEXT, 74, PIC_Y + 198, 0);
         }
@@ -630,7 +665,7 @@ static void draw_side_panel(uint8_t* scr) {
                 order_buttons[i].mode == mode
             );
         if (!nselected)
-            gfx_text(scr, 8, BTN_Y + 150, "No units selected", C_LGREY);
+            gfx_text(scr, 8, BTN_Y + 176, "No units selected", C_LGREY);
     }
 }
 
@@ -683,23 +718,53 @@ typedef struct {
  * 32 * tx + 16, 32 * ty + 16, across the corners of four sight cells, so a
  * cell uncovered changes the four tiles over it, and the background draws
  * those again. */
-#define EX_MAX 96          /* sight cells across and down the largest map; a row's stride */
-#define EX_SHIFT 5         /* a sight cell is 32 pixels */
-#define EX_NONE 0xFF
-#define FOG_W (EX_MAX + 4) /* fog_dirty's stride: tiles -1 to EX_MAX - 1, and room */
-static uint8_t explored[EX_MAX * EX_MAX] __attribute__((aligned(4)));
+#define EX_SHIFT 5 /* a sight cell is 32 pixels */
+#define EX_NONE 0xFFFF
+/* sized to the map when a mission starts (ex_alloc()): explored is ex_h
+ * rows of ex_stride bytes, fog_dirty fog_stride */
+static int ex_stride;  /* explored's stride: the sight cells across, a multiple of 4 */
+static int fog_stride; /* fog_dirty's: tiles -1 to ex_stride - 1, and room */
+static uint8_t* explored;
 static int ex_w, ex_h;
-static uint8_t ex_x[MAX_UNITS], ex_y[MAX_UNITS]; /* the cell a unit last explored from (y on screen) */
-static uint8_t ex_z[MAX_UNITS];                  /* and its z cell, to tell when it has moved */
-static uint8_t fog_dirty[(EX_MAX + 1) * FOG_W];  /* tiles to draw again, tile tx, ty at ty + 1, tx + 1 */
-static int fog_t0, fog_t1;                       /* the rows of fog_dirty in use */
-static int fog_all;                              /* the whole view to draw again */
-static uint8_t mini_dirty[EX_MAX];               /* cell rows the minimap has still to show */
+static uint16_t ex_x[MAX_UNITS], ex_y[MAX_UNITS]; /* the cell a unit last explored from (y on screen) */
+static uint16_t ex_z[MAX_UNITS];                  /* and its z cell, to tell when it has moved */
+static uint8_t* fog_dirty;  /* tiles to draw again, tile tx, ty at ty + 1, tx + 1 */
+static int fog_t0, fog_t1;  /* the rows of fog_dirty in use */
+static int fog_all;         /* the whole view to draw again */
+static uint8_t* mini_dirty; /* cell rows the minimap has still to show */
 static int mini_any;
+static void* ex_block;
+
+static void ex_free(void) {
+    tt_free(ex_block);
+    ex_block = 0;
+}
+
+static int ex_alloc(void) {
+    uint8_t* p;
+    ex_free();
+    ex_w = (mission.w + 1) / 2;
+    ex_h = (mission.h + 1) / 2;
+    ex_stride = (ex_w + 3) & ~3;
+    fog_stride = ex_stride + 4;
+    ex_block = tt_alloc_any((int32_t)ex_stride * ex_h + (int32_t)(ex_h + 2) * fog_stride + ex_h + 16);
+    if (!ex_block)
+        return 0;
+    p = (uint8_t*)(((uint32_t)ex_block + 3) & ~3UL);
+    explored = p;
+    p += ex_stride * ex_h;
+    fog_dirty = p;
+    p += (ex_h + 2) * fog_stride;
+    mini_dirty = p;
+    memset(explored, 0, (size_t)ex_stride * ex_h);
+    memset(fog_dirty, 0, (size_t)(ex_h + 2) * fog_stride);
+    memset(mini_dirty, 0, (size_t)ex_h);
+    return 1;
+}
 
 static int explored_at(int x, int y) {
     int cx = x >> EX_SHIFT, cy = y >> EX_SHIFT;
-    return cx < 0 || cy < 0 || cx >= ex_w || cy >= ex_h || explored[cy * EX_MAX + cx];
+    return cx < 0 || cy < 0 || cx >= ex_w || cy >= ex_h || explored[cy * ex_stride + cx];
 }
 
 /* Whether a unit is shown: the player's always; an enemy where the sim's
@@ -712,7 +777,7 @@ static int unit_shown(const Unit* u) {
 /* Explores cells c0..c1 of row r, and notes the fog tiles and minimap rows
  * over those it uncovers */
 static void explore_row(int r, int c0, int c1) {
-    uint8_t* e = explored + r * EX_MAX;
+    uint8_t* e = explored + r * ex_stride;
     int c = c0;
     for (;;) {
         int start;
@@ -732,8 +797,8 @@ static void explore_row(int r, int c0, int c1) {
         while (c <= c1 && !e[c])
             e[c++] = 1;
         /* tiles start - 1..c - 1 in tile rows r - 1 and r */
-        memset(fog_dirty + r * FOG_W + start, 1, (size_t)(c - start + 1));
-        memset(fog_dirty + (r + 1) * FOG_W + start, 1, (size_t)(c - start + 1));
+        memset(fog_dirty + r * fog_stride + start, 1, (size_t)(c - start + 1));
+        memset(fog_dirty + (r + 1) * fog_stride + start, 1, (size_t)(c - start + 1));
         if (r < fog_t0)
             fog_t0 = r;
         if (r + 1 > fog_t1)
@@ -761,12 +826,12 @@ static void explore(void) {
         if (cx == ox && cz == ex_z[i])
             continue;
         cy = unit_screen_y(u) >> EX_SHIFT;
-        if (cx < 0 || cy < 0 || cx >= ex_w || cy >= ex_h || cz < 0 || cz > 254)
+        if (cx < 0 || cy < 0 || cx >= ex_w || cy >= ex_h || cz < 0)
             continue;
         oy = ex_y[i];
-        ex_x[i] = (uint8_t)cx;
-        ex_z[i] = (uint8_t)cz;
-        ex_y[i] = (uint8_t)cy;
+        ex_x[i] = (uint16_t)cx;
+        ex_z[i] = (uint16_t)cz;
+        ex_y[i] = (uint16_t)cy;
         r = unittypes[u->type].sight >> EX_SHIFT;
         if (r > 31)
             r = 31;
@@ -793,9 +858,20 @@ static void explore(void) {
     }
 }
 
+void game_log_explored(void) {
+    char line[260];
+    int y, x;
+    for (y = 0; y < ex_h; y++) {
+        for (x = 0; x < ex_w && x < 255; x++)
+            line[x] = explored[y * ex_stride + x] ? '#' : '.';
+        line[x] = 0;
+        test_log("ex %3d %s", y, line);
+    }
+}
+
 void game_explore_all(void) {
-    memset(explored, 1, sizeof explored);
-    memset(mini_dirty, 1, sizeof mini_dirty);
+    memset(explored, 1, (size_t)ex_stride * ex_h);
+    memset(mini_dirty, 1, (size_t)ex_h);
     mini_any = 1;
     fog_all = 1;
 }
@@ -810,7 +886,19 @@ static int npieces;
 static int32_t bg_version = -1;
 static uint8_t marks[NMARKS][CELL_ROWS][RING_G] __attribute__((aligned(4))); /* ring cells changed, a frame each */
 static int mark_cur;
-static int16_t feat_order[MAX_FEATS];
+static int16_t feat_order[MAX_FEATS];  /* the features drawn on their own, back to front */
+static int16_t feat_order_z[MAX_FEATS]; /* and each one's z when it went in */
+static uint8_t in_order[MAX_FEATS];
+
+/* A feature type's sprite: the mission's, or a unit type's wreck; null for none */
+static const int16_t* feat_sprite(int type) {
+    const FeatureType* ft = feat_type(type);
+    if (ft->sprite == FEAT_WRECK)
+        return unit_wreck(type - mission.nftypes);
+    if (ft->sprite == FEAT_NONE)
+        return 0;
+    return (const int16_t*)(mission.bank + ft->sprite);
+}
 static int nfeat_order;
 
 static int piece_cols, seam_x, seam_y; /* how the pieces lie: where the second column and row start */
@@ -970,19 +1058,44 @@ static void draw_fill(int x0, int y0, int x1, int y1, int c) {
     mark(x0, y0, x1, y1);
 }
 
-/* Features back to front, kept sorted as they come and go */
+/* Whether a feature is drawn on its own: it has a sprite, not baked in the map */
+static int drawn_alone(int i) {
+    const FeatureType* ft = feat_type(feats[i].type);
+    return ft->sprite != FEAT_NONE && !(ft->flags & FF_BAKED);
+}
+
+/* Features back to front, kept in order as they come and go: those gone
+ * (or whose slot another took, at another z) leave the order, and each new
+ * one goes in at its place, after those of its z */
 static void sort_features(void) {
-    int i, j;
-    nfeat_order = 0;
-    for (i = 0; i < nfeats; i++)
-        if (feats[i].alive && common.feat[feats[i].type].sprite != 0xFFFFFFFFUL &&
-            !(common.feat[feats[i].type].flags & FF_BAKED))
-            feat_order[nfeat_order++] = (int16_t)i;
-    for (i = 1; i < nfeat_order; i++) {
-        int16_t v = feat_order[i];
-        for (j = i; j > 0 && feats[feat_order[j - 1]].z > feats[v].z; j--)
-            feat_order[j] = feat_order[j - 1];
-        feat_order[j] = v;
+    int i, n = 0;
+    for (i = 0; i < nfeat_order; i++) {
+        int k = feat_order[i];
+        if (feats[k].alive && feats[k].z == feat_order_z[i] && drawn_alone(k)) {
+            feat_order[n] = (int16_t)k;
+            feat_order_z[n++] = feats[k].z;
+        } else {
+            in_order[k] = 0;
+        }
+    }
+    nfeat_order = n;
+    for (i = 0; i < nfeats; i++) {
+        int lo = 0, hi = nfeat_order, z = feats[i].z;
+        if (in_order[i] || !feats[i].alive || !drawn_alone(i))
+            continue;
+        while (lo < hi) {
+            int mid = (lo + hi) >> 1;
+            if (feat_order_z[mid] <= z)
+                lo = mid + 1;
+            else
+                hi = mid;
+        }
+        memmove(feat_order + lo + 1, feat_order + lo, (size_t)(nfeat_order - lo) * sizeof feat_order[0]);
+        memmove(feat_order_z + lo + 1, feat_order_z + lo, (size_t)(nfeat_order - lo) * sizeof feat_order_z[0]);
+        feat_order[lo] = (int16_t)i;
+        feat_order_z[lo] = (int16_t)z;
+        nfeat_order++;
+        in_order[i] = 1;
     }
 }
 
@@ -1005,8 +1118,8 @@ static void fog_rows(const Piece* p, int gy, int ya, int yb, int gx0, int gx1) {
         r0 = ex_h - 1;
     if (r1 >= ex_h)
         r1 = ex_h - 1;
-    e0 = explored + r0 * EX_MAX;
-    e1 = explored + r1 * EX_MAX;
+    e0 = explored + r0 * ex_stride;
+    e1 = explored + r1 * ex_stride;
     for (gx = gx0; gx <= gx1; gx++) {
         int ti = (gx - 1) >> 1, a = ti < 0 ? 0 : ti >= ex_w ? ex_w - 1 : ti, b = ti + 1 >= ex_w ? ex_w - 1 : ti + 1;
         int pat = (e0[a] ? 0 : 1) | (e0[b] ? 0 : 2) | (e1[a] ? 0 : 4) | (e1[b] ? 0 : 8), y;
@@ -1071,7 +1184,7 @@ static void bg_render_piece(const Piece* p, int x0, int y0, int x1, int y1) {
         sy = ground_screen_y(f->x, f->z);
         if (sy < y0 - FEAT_DOWN || sy > y1 + FEAT_UP)
             continue;
-        gfx_sprite(bg, common_sprite(common.feat[f->type].sprite), f->x + p->dx, sy + p->dy);
+        gfx_sprite(bg, feat_sprite(f->type), f->x + p->dx, sy + p->dy);
     }
     /* the fog over what no unit has explored */
     for (i = (y0 < 0 ? 0 : y0) >> 4; i <= y1 >> 4; i++)
@@ -1131,17 +1244,17 @@ static void bg_update(void) {
             bg_render(left, top, (g0 - dg) * 16 - 1, bottom);
         /* the fog tiles over cells uncovered: a run of them at a time */
         for (t = fog_t0; t <= fog_t1; t++) {
-            const uint8_t* row = fog_dirty + t * FOG_W;
+            const uint8_t* row = fog_dirty + t * fog_stride;
             int y0 = t * 32 - 16, c = 0, start;
             if (y0 + 31 < top || y0 > bottom)
                 continue;
             for (;;) {
-                while (c < FOG_W && !row[c])
+                while (c < fog_stride && !row[c])
                     c++;
-                if (c == FOG_W)
+                if (c == fog_stride)
                     break;
                 start = c;
-                while (c < FOG_W && row[c])
+                while (c < fog_stride && row[c])
                     c++;
                 if (c * 32 - 17 >= left && start * 32 - 16 <= right)
                     bg_render(start * 32 - 16, y0, c * 32 - 17, y0 + 31);
@@ -1156,8 +1269,8 @@ static void bg_update(void) {
             );
     }
     for (t = fog_t0; t <= fog_t1; t++)
-        memset(fog_dirty + t * FOG_W, 0, FOG_W);
-    fog_t0 = EX_MAX + 1;
+        memset(fog_dirty + t * fog_stride, 0, fog_stride);
+    fog_t0 = ex_h + 1;
     fog_t1 = -1;
     fog_all = 0;
     feat_dirty_x0 = 0;
@@ -1322,8 +1435,9 @@ draw_resource(uint8_t* scr, int x, int32_t have, int32_t store, int32_t income, 
     gfx_text(scr, x + 100 - gfx_text_width(s), 16, s, C_LGREY);
     sprintf(
         s,
-        "+%ld.%ld",
-        (long)(income * TICKS / 256),
+        "%c%ld.%ld",
+        income < 0 ? '-' : '+',
+        (long)((income < 0 ? -income : income) * TICKS / 256),
         (long)((income < 0 ? -income : income) * TICKS * 10 / 256 % 10)
     );
     gfx_text(scr, x + 108, 5, s, income >= 0 ? C_GREEN : C_RED);
@@ -1438,15 +1552,15 @@ static uint32_t side_key(void) {
 
 /* The minimap as explored: the mission's, black where no unit has been */
 static uint16_t* mini;
-static uint8_t mini_cx[128], mini_cy[128]; /* the cell under each column and row */
+static uint16_t mini_cx[128], mini_cy[128]; /* the sight cell under the minimap's each column and row */
 
 static void mini_start(void) {
     int i;
     for (i = 0; i < mission.mw && i < 128; i++)
-        mini_cx[i] = (uint8_t)(((2 * i + 1) * mapw / (2 * mission.mw)) >> EX_SHIFT);
+        mini_cx[i] = (uint16_t)(((2 * i + 1) * mapw / (2 * mission.mw)) >> EX_SHIFT);
     for (i = 0; i < mission.mh && i < 128; i++)
-        mini_cy[i] = (uint8_t)(((2 * i + 1) * maph / (2 * mission.mh)) >> EX_SHIFT);
-    memset(mini_dirty, 1, sizeof mini_dirty);
+        mini_cy[i] = (uint16_t)(((2 * i + 1) * maph / (2 * mission.mh)) >> EX_SHIFT);
+    memset(mini_dirty, 1, (size_t)ex_h);
     mini_any = 1;
 }
 
@@ -1462,7 +1576,7 @@ static void mini_update(void) {
         if (!mini_dirty[cy])
             continue;
         if (cy != last) {
-            const uint8_t* e = explored + cy * EX_MAX;
+            const uint8_t* e = explored + cy * ex_stride;
             last = cy;
             for (g = 0; g < groups; g++) {
                 uint16_t k = 0;
@@ -1479,7 +1593,7 @@ static void mini_update(void) {
             d[3] = s[3] & m[g];
         }
     }
-    memset(mini_dirty, 0, sizeof mini_dirty);
+    memset(mini_dirty, 0, (size_t)ex_h);
     mini_any = 0;
 }
 
@@ -1495,12 +1609,12 @@ static void draw_minimap(uint8_t* scr) {
         int x, y;
         if (!u->alive)
             continue;
-        if (!unit_shown(u))
+        if (!unit_shown(u) && !(u->flags & UF_ON_RADAR))
             continue;
         x = ox + (int)((u->x >> FIX) * mission.mw / mapw);
         y = oy + (int)((u->z >> FIX) * mission.mh / maph);
-        gfx_pixel(scr, x, y, u->owner == PLAYER ? C_BLUE : C_RED);
-        gfx_pixel(scr, x + 1, y, u->owner == PLAYER ? C_BLUE : C_RED);
+        gfx_pixel(scr, x, y, unittypes[u->type].side ? C_RED : C_BLUE);
+        gfx_pixel(scr, x + 1, y, unittypes[u->type].side ? C_RED : C_BLUE);
         if (u->flags & UF_SELECTED)
             gfx_pixel(scr, x, y + 1, C_WHITE);
     }
@@ -1582,9 +1696,12 @@ static void draw_battlefield(void) {
         uz = u->z >> FIX;
         if (ux < x0 || ux > x1 || uz < y0 || uz > y1 || !unit_shown(u))
             continue;
-        /* buildings sort by their back edge, so units in front of them come later */
+        /* buildings sort by their back edge, so units in front of them come
+         * later; aircraft come after everything on the ground */
         if (unittypes[u->type].kind != UK_MOBILE)
             uz -= unittypes[u->type].footz * 8 - 8;
+        else if (unit_draw_y(u) != unit_screen_y(u))
+            uz += 0x4000;
         drawlist[n++] = (uint32_t)(uz + 64) << 16 | (uint32_t)i;
     }
     sort_draw(n);
@@ -1592,8 +1709,8 @@ static void draw_battlefield(void) {
         const Unit* u = &units[drawlist[i] & 0xFFFF];
         const UnitType* t = &unittypes[u->type];
         int dir = t->ndirs == 16 ? ((u->heading + 2048) >> 12) & 15 : 0;
-        int sx = u->x >> FIX, sy = unit_screen_y(u);
-        const int16_t* spr = unit_frame(t, dir);
+        int sx = u->x >> FIX, sy = unit_draw_y(u);
+        const int16_t* spr = unit_frame(u->type, dir);
         if (u->flags & UF_UNBUILT) {
             comp_blit(BLIT_NANO, spr, sx, sy, built_of(u, 256));
         } else {
@@ -1615,13 +1732,13 @@ static void draw_battlefield(void) {
         if (u->owner != PLAYER && !((u->flags & UF_SEEN) && unit_shown(u)))
             continue;
         sx = u->x >> FIX;
-        sy = unit_screen_y(u) - unittypes[u->type].top / 2;
+        sy = unit_draw_y(u) - unittypes[u->type].top / 2;
         if (u->nano >= 0) {
             const Unit* v = &units[u->nano];
-            if (!v->alive || !(v->flags & UF_UNBUILT))
+            if (!v->alive)
                 continue;
             tx = (v->x >> FIX) + ((game_frames * 7 + i * 3) % 17) - 8;
-            ty = unit_screen_y(v) - unittypes[v->type].top / 2 + ((game_frames * 5 + i) % 11) - 5;
+            ty = unit_draw_y(v) - unittypes[v->type].top / 2 + ((game_frames * 5 + i) % 11) - 5;
         } else {
             const Feature* f;
             if (~u->nano >= nfeats)
@@ -1682,7 +1799,7 @@ static void draw_battlefield(void) {
         if (!u->alive || !(u->flags & UF_SELECTED))
             continue;
         ux = u->x >> FIX;
-        uy = unit_screen_y(u);
+        uy = unit_draw_y(u);
         if (ux < x0 || ux > x1 || uy < y0 || uy > y1)
             continue;
         draw_selection(u, ux, uy);
@@ -1691,12 +1808,12 @@ static void draw_battlefield(void) {
     if (mode == M_BUILD && build_type >= 0 && in_view(mx(), my())) {
         int wx, wz, bx, bz, sy, ok;
         const UnitType* t = &unittypes[build_type];
-        const int16_t* spr = unit_frame(t, 0);
+        const int16_t* spr = unit_frame(build_type, 0);
         screen_to_world(mx(), my(), &wx, &wz);
         bx = snap_build_x(build_type, wx);
         bz = snap_build_z(build_type, wz);
         ok = can_build_at(build_type, bx, bz);
-        sy = ground_screen_y(bx, bz);
+        sy = bz - type_ground(build_type, bx, bz) / 2;
         comp_blit(BLIT_TINT, spr, bx, sy, ok ? C_GREEN : C_RED);
         comp_rect(
             bx - t->footx * 8,
@@ -1726,12 +1843,12 @@ static void draw_battlefield(void) {
     if (paused || sim_result) {
         int vx = camx, vy = camy;
         if (paused) {
-            comp_blit(BLIT_SPRITE, common_sprite(common.title[TITLE_PAUSED]), vx + 200, vy + 150, 0);
+            comp_blit(BLIT_SPRITE, world_sprite(world.title[TITLE_PAUSED]), vx + 200, vy + 150, 0);
             comp_text(vx + 150, vy + 190, "Esc: resume   Q: quit to menu", C_WHITE);
         } else {
             comp_blit(
                 BLIT_SPRITE,
-                common_sprite(common.title[sim_result > 0 ? TITLE_VICTORY : TITLE_DEFEAT]),
+                world_sprite(world.title[sim_result > 0 ? TITLE_VICTORY : TITLE_DEFEAT]),
                 vx + 190,
                 vy + 150,
                 0
@@ -1758,6 +1875,10 @@ static void draw_cursor(uint8_t* scr) {
             c = CUR_GUARD;
         else if (mode == M_RECLAIM)
             c = CUR_RECLAIM;
+        else if (mode == M_CAPTURE)
+            c = CUR_CAPTURE;
+        else if (mode == M_REPAIR)
+            c = CUR_REPAIR;
         else if (mode == M_BUILD)
             c = CUR_NORMAL;
         else if (unit_at(wx, wy, 1 << PLAYER, unit_shown) >= 0)
@@ -1767,15 +1888,47 @@ static void draw_cursor(uint8_t* scr) {
         else if (nselected && selected(SEL_MOBILE, 0))
             c = CUR_MOVE;
     }
-    spr = common_sprite(common.cursor[c]);
+    spr = world_sprite(world.cursor[c]);
     gfx_clip_full();
     gfx_sprite(scr, spr, x, y);
     sprite_box(spr, x, y, &S->cur_x0, &S->cur_y0, &S->cur_x1, &S->cur_y1);
 }
 
 /* The interface around the battlefield is drawn once a change into ui, a
- * screen-sized buffer in TT-RAM, and each screen copies the parts it lacks */
+ * screen-sized buffer in TT-RAM, and each screen copies the parts it lacks.
+ * The panels as loaded are kept where they show, to draw on afresh: the
+ * side panel's 480 rows of 8 groups, then the top bar's 32 rows of 32
+ * groups, then the bottom bar's. */
 static uint8_t* ui;
+static uint8_t* keep;
+#define KEEP_SIDE (480 * 64)
+#define KEEP_BAR (32 * 256)
+
+static void keep_panels(void) {
+    int y;
+    for (y = 0; y < SCREEN_H; y++)
+        memcpy(keep + y * 64, ui + y * LINE_BYTES, 64);
+    for (y = 0; y < VIEW_Y; y++)
+        memcpy(keep + KEEP_SIDE + y * 256, ui + y * LINE_BYTES + 64, 256);
+    for (y = 0; y < SCREEN_H - VIEW_Y - VIEW_H; y++)
+        memcpy(keep + KEEP_SIDE + KEEP_BAR + y * 256, ui + (VIEW_Y + VIEW_H + y) * LINE_BYTES + 64, 256);
+}
+
+/* The side panel's rows y0..y1 put back in ui as loaded */
+static void restore_side(int y0, int y1) {
+    int y;
+    for (y = y0; y <= y1; y++)
+        memcpy(ui + y * LINE_BYTES, keep + y * 64, 64);
+}
+
+/* The bars above and below the battlefield put back in ui as loaded */
+static void restore_bars(void) {
+    int y;
+    for (y = 0; y < VIEW_Y; y++)
+        memcpy(ui + y * LINE_BYTES + 64, keep + KEEP_SIDE + y * 256, 256);
+    for (y = 0; y < SCREEN_H - VIEW_Y - VIEW_H; y++)
+        memcpy(ui + (VIEW_Y + VIEW_H + y) * LINE_BYTES + 64, keep + KEEP_SIDE + KEEP_BAR + y * 256, 256);
+}
 static uint32_t ui_side_key, ui_bar_key;
 static int32_t ui_bar_frame, ui_mini_frame = -100;
 static int32_t side_serial, bar_serial, mini_serial;
@@ -1868,7 +2021,6 @@ void game_check_layers(void) {
 
 static void draw_frame(void) {
     uint8_t* scr = tt_back;
-    const uint8_t* panel = (const uint8_t*)common.panel;
     uint32_t t = HZ200, t2, k;
     {
         int i;
@@ -1908,7 +2060,7 @@ static void draw_frame(void) {
     k = side_key();
     if (k != ui_side_key || !side_serial) {
         ui_side_key = k;
-        gfx_copy_rect(ui, panel, 0, 128, VIEW_X - 1, SCREEN_H - 1);
+        restore_side(128, SCREEN_H - 1);
         draw_side_panel(ui);
         side_serial++;
     }
@@ -1920,8 +2072,7 @@ static void draw_frame(void) {
         if (k != ui_bar_key || !bar_serial) {
             ui_bar_frame = game_frames;
             ui_bar_key = k;
-            gfx_copy_rect(ui, panel, VIEW_X, 0, SCREEN_W - 1, VIEW_Y - 1);
-            gfx_copy_rect(ui, panel, VIEW_X, VIEW_Y + VIEW_H, SCREEN_W - 1, SCREEN_H - 1);
+            restore_bars();
             draw_bars(ui);
             bar_serial++;
         }
@@ -2117,12 +2268,73 @@ static int handle_mouse(void) {
 
 /* ------------------------------------------------------------ the mission */
 
+/* What a mission keeps back from the sprites, for its other needs */
+#define SPR_RESERVE_TT (48 * 1024L)
+#define SPR_RESERVE_ST (160 * 1024L)
+#define SPR_MIN (128 * 1024L)
+#define SPR_MAX (1536 * 1024L)
+
+static const char* run_error;
+
+const char* game_error(void) {
+    return run_error;
+}
+
+/* Everything a mission needs beside its file: the screen's buffers, its
+ * world's colours and panels, the sim's and the explored map's arrays, and
+ * what is left for the units' sprites */
+static int mission_start(int difficulty) {
+    int32_t tt, st, room;
+    int i;
+    if (!bg) {
+        bg = tt_alloc_any((int32_t)RING_STRIDE * RING_H);
+        comp = tt_alloc_any((int32_t)RING_STRIDE * RING_H);
+        ui = tt_alloc_any(SCREEN_BYTES);
+        mini = tt_alloc_any(128 / 16 * 8 * 128);
+        keep = tt_alloc_any(KEEP_SIDE + 2 * KEEP_BAR);
+    }
+    if (!bg || !comp || !ui || !mini || !keep) {
+        run_error = "needs more free RAM for the battlefield";
+        return 0;
+    }
+    if (!load_world(mission.world) || !load_panel(mission.world, mission.side, ui)) {
+        run_error = data_error();
+        return 0;
+    }
+    keep_panels();
+    if (!sim_start(difficulty) || !ex_alloc()) {
+        run_error = "needs more free RAM for this mission's map";
+        return 0;
+    }
+    tt = (int32_t)Mxalloc(-1, 1) - SPR_RESERVE_TT;
+    st = (int32_t)Mxalloc(-1, 0) - SPR_RESERVE_ST;
+    room = tt > st ? tt : st;
+    if (room > SPR_MAX)
+        room = SPR_MAX;
+    if (room < SPR_MIN || !spr_open(mission.world, room)) {
+        run_error = room < SPR_MIN ? "needs more free RAM for the units" : "can't read the units' sprites";
+        return 0;
+    }
+    for (i = 0; i < mission.nneed; i++)
+        spr_load(mission.need[i]);
+    return 1;
+}
+
+static void mission_end(void) {
+    spr_close();
+    ex_free();
+    sim_stop();
+}
+
 int game_run(int difficulty) {
     uint32_t last, acc = 0;
     int i, result = 0;
     mapw = mission.w * 16;
     maph = mission.h * 16;
-    sim_start(difficulty);
+    if (!mission_start(difficulty)) {
+        mission_end();
+        return GAME_FAILED;
+    }
     mode = M_NONE;
     page = 1;
     build_page = 0;
@@ -2132,12 +2344,8 @@ int game_run(int difficulty) {
     nselected = 0;
     minimap_ox = ((128 - mission.mw) / 2) & ~15;
     minimap_oy = (128 - mission.mh) / 2;
-    ex_w = (mission.w + 1) / 2 < EX_MAX ? (mission.w + 1) / 2 : EX_MAX;
-    ex_h = (mission.h + 1) / 2 < EX_MAX ? (mission.h + 1) / 2 : EX_MAX;
-    memset(explored, 0, sizeof explored);
-    memset(ex_x, EX_NONE, sizeof ex_x);
-    memset(fog_dirty, 0, sizeof fog_dirty);
-    fog_t0 = EX_MAX + 1;
+    memset(ex_x, 0xFF, sizeof ex_x);
+    fog_t0 = ex_h + 1;
     fog_t1 = -1;
     explore(); /* what the units see from the start; the first frame draws it all */
     game_frames = 0;
@@ -2155,15 +2363,8 @@ int game_run(int difficulty) {
             centre_on(units[first].x >> FIX, units[first].z >> FIX);
     }
     gfx_set_font(common.font);
-    tt_set_palette(common.palette);
-    if (!bg) {
-        bg = tt_alloc_any((int32_t)RING_STRIDE * RING_H);
-        comp = tt_alloc_any((int32_t)RING_STRIDE * RING_H);
-        ui = tt_alloc_any(SCREEN_BYTES);
-        mini = tt_alloc_any(128 / 16 * 8 * 128);
-    }
+    tt_set_palette(world.palette);
     mini_start();
-    memcpy(ui, common.panel, SCREEN_BYTES);
     side_serial = bar_serial = mini_serial = 0;
     ui_mini_frame = -100;
     memset(screens, 0, sizeof screens);
@@ -2171,6 +2372,8 @@ int game_run(int difficulty) {
         screens[i].scr = tt_screens[i];
     /* the rings hold nothing yet: the first frame draws them whole */
     bg_version = -1;
+    nfeat_order = 0;
+    memset(in_order, 0, sizeof in_order);
     following = 0;
     ring_g0 = -100000;
     ring_y0 = 0;
@@ -2219,11 +2422,15 @@ int game_run(int difficulty) {
         }
         game_sim_hz += HZ200 - t0;
         t0 = HZ200;
+        spr_frame();
+        snd_music(sim_tick_count - sim_last_fight < TICKS * 5);
+        snd_update();
         draw_frame();
         game_draw_hz += HZ200 - t0;
         tt_flip();
         game_frames++;
     }
-    snd_stop();
+    snd_silence();
+    mission_end();
     return result;
 }

@@ -101,8 +101,14 @@ def build_picture(samples, iters=20, seed=2):
         pal[i] = to_tt(c)
     for slot, c in zip(FREE, cent / WEIGHT):
         c = to_tt(c)
+        # a colour taken already: a step brighter, or darker once at white
+        step = 17
         while c in pal:
-            c = tuple(min(255, v + 17) for v in c)
+            n = tuple(min(255, max(0, v + step)) for v in c)
+            if n == c:
+                step = -17
+                continue
+            c = n
         pal[slot] = c
     return pal
 

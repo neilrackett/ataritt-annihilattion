@@ -22,7 +22,7 @@
 #define MAX_PROJ 160
 #define MAX_FX 96
 #define MAX_BEAMS 48
-#define MAX_FEATS 1200
+#define MAX_FEATS 2400
 #define FIX 8
 
 enum { PLAYER = 0, ENEMY = 1 };
@@ -39,7 +39,9 @@ enum {
     O_DGUN,
     O_WAIT,
     O_WAITATTACK,
-    O_ATTACKTYPE
+    O_ATTACKTYPE,
+    O_CAPTURE,
+    O_REPAIR
 };
 
 typedef struct {
@@ -54,6 +56,7 @@ typedef struct {
 #define UF_UNBUILT 2
 #define UF_SEEN 8
 #define UF_WAS_SEEN 16
+#define UF_ON_RADAR 32 /* an enemy the player's radar or sonar finds */
 
 typedef struct {
     uint8_t alive, type, owner, flags;
@@ -63,7 +66,8 @@ typedef struct {
     int32_t hp;
     uint32_t progress; /* while unbuilt: work done, of buildtime * TICKS */
     int16_t target;    /* the unit its weapons are on, or -1 */
-    uint8_t reload[3], burst[3];
+    uint16_t reload[3];
+    uint8_t burst[3];
     uint8_t norders, npath, pathi, stuck;
     Order order[MAX_ORDERS];
     uint16_t path[MAX_PATH];
@@ -80,7 +84,10 @@ typedef struct {
     int32_t mex;          /* metal it extracts, 1/256 a tick */
     int16_t built_by;
     uint16_t reclaim;      /* ticks of reclaiming done */
-    uint8_t repaths, pad2; /* searches since it last got anywhere */
+    uint8_t repaths;       /* searches since it last got anywhere */
+    uint8_t stock;         /* missiles stockpiled */
+    uint16_t capture;      /* ticks of capturing done */
+    uint16_t stockwork;    /* ticks paid toward the next missile */
 } Unit;
 
 typedef struct {
@@ -92,10 +99,10 @@ typedef struct {
 } Player;
 
 typedef struct {
-    uint8_t alive, weapon, owner, ticks;
+    uint8_t alive, weapon, side, ticks; /* side: the player who fired it */
     int32_t x, z, vx, vz;
     int16_t y, vy; /* height for ballistic arcs, 8.8 */
-    int16_t target;
+    int16_t target, owner; /* owner: the unit that fired it */
 } Projectile;
 
 typedef struct {
@@ -109,8 +116,9 @@ typedef struct {
 } Beam;
 
 typedef struct {
-    uint8_t alive, type;
-    int16_t x, z; /* centre */
+    uint8_t alive, pad;
+    uint16_t type; /* the mission's feature types, then the units' wrecks (wreck_feat()) */
+    int16_t x, z;  /* centre */
     int32_t metal, energy;
 } Feature;
 
@@ -123,9 +131,11 @@ extern Feature feats[MAX_FEATS];
 extern int nfeats;
 extern int32_t feat_version; /* goes up whenever a feature appears or goes */
 extern int32_t sim_tick_count;
+extern int32_t sim_last_fight; /* the tick a unit of the player's last fought */
 extern int sim_result; /* 0 playing, 1 won, -1 lost */
 extern int wind_now;   /* energy a second a wind generator gives, before its cap */
 extern int unit_hi;    /* every living unit's index is below this */
+extern int32_t sim_timer; /* ticks until a timed mission is lost, or -1 */
 /* Where features came or went since the screen last took them: battlefield
  * pixels, y as on screen (z - height / 2); x0 > x1 when none did */
 extern int feat_dirty_x0, feat_dirty_y0, feat_dirty_x1, feat_dirty_y1;
@@ -134,7 +144,11 @@ extern int feat_dirty_x0, feat_dirty_y0, feat_dirty_x1, feat_dirty_y1;
 /// players' metal and energy, the map's paths and line of sight.
 ///
 /// @param schema the layout: 0 easy, 1 medium, 2 hard
-void sim_start(int schema);
+/// @return 1, or 0 when there is not the memory for the map's arrays
+int sim_start(int schema);
+
+/// Gives back the memory sim_start() took for the map.
+void sim_stop(void);
 
 /// Runs one tick: orders and scripts, paths, weapons and shots, metal and
 /// energy, the computer player, line of sight and the objectives.
@@ -156,11 +170,42 @@ static inline int ground_screen_y(int x, int z) {
     return z - ground_height(x, z) / 2;
 }
 
-/// Gives where a unit stands on screen.
+/// Gives the height a unit of a type stands at: the ground's, or the sea's
+/// surface for one that floats (and an aircraft's shadow).
+///
+/// @param type the unit type
+/// @param x the place's x, pixels
+/// @param z the place's z, pixels
+/// @return the height, pixels
+int type_ground(int type, int x, int z);
+
+/// Gives where a unit stands on screen: on the ground, or on the water for
+/// a ship (and an aircraft's shadow).
 ///
 /// @param u the unit
-/// @return its ground_screen_y(), pixels
+/// @return z less its height / 2, pixels
 int unit_screen_y(const Unit* u);
+
+/// Gives where a unit is drawn on screen: an aircraft flies above where it
+/// stands.
+///
+/// @param u the unit
+/// @return unit_screen_y() less half its height in the air, pixels
+int unit_draw_y(const Unit* u);
+
+/// Tells whether a unit can fight another with the weapons that fire by
+/// themselves: an aircraft takes a weapon that reaches the air, a
+/// submarine a torpedo.
+///
+/// @param a the attacker
+/// @param v the target
+/// @return 1 when it can
+int can_attack(const Unit* a, const Unit* v);
+
+/// Destroys a unit with its self-destruct blast, as a crawling bomb does.
+///
+/// @param idx the unit
+void sim_self_destruct(int idx);
 
 /// Gives the heading that faces along a direction.
 ///
@@ -275,6 +320,21 @@ void sim_sound_at(int sound, int x, int z);
 ///
 /// @param idx the unit
 void sim_kill(int idx);
+
+/// Puts a finished unit down for a test.
+///
+/// @param type the unit type
+/// @param owner PLAYER or ENEMY
+/// @param x its x, pixels
+/// @param z its z, pixels
+/// @return the unit, or -1
+int sim_spawn(int type, int owner, int x, int z);
+
+/// Hands a unit to a player for a test, as a capture does.
+///
+/// @param idx the unit
+/// @param owner PLAYER or ENEMY
+void sim_capture(int idx, int owner);
 
 /* Set by the UI: the visible part of the battlefield, for sounds */
 extern int view_x0, view_y0, view_x1, view_y1;

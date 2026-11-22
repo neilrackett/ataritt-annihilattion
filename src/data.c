@@ -8,22 +8,32 @@
  */
 #include <string.h>
 #include <stdio.h>
+#include <ctype.h>
 #include <mint/osbind.h>
 #include "data.h"
 #include "tt.h"
 
+int ncampaigns, nmissions, ntracks;
+Campaign* campaigns;
+MissionInfo* missions;
+Track* tracks;
 int nweapons, nunittypes, nclasses;
 WeaponType* weapons;
 UnitType* unittypes;
-const uint8_t* unit_bank;
+FeatureType* wrecks;
 Common common;
+World world;
+Panel panel;
 Sounds sounds;
 Mission mission;
 
-_Static_assert(sizeof(WeaponType) == 36, "WeaponType must match UNITS.DAT");
-_Static_assert(sizeof(UnitType) == 174, "UnitType must match UNITS.DAT");
-_Static_assert(sizeof(FeatureType) == 38, "FeatureType must match COMMON.DAT");
-_Static_assert(sizeof(PlacedUnit) == 14, "PlacedUnit must match MISSn.DAT");
+_Static_assert(sizeof(Campaign) == 30, "Campaign must match GAME.DAT");
+_Static_assert(sizeof(MissionInfo) == 54, "MissionInfo must match GAME.DAT");
+_Static_assert(sizeof(Track) == 6, "Track must match GAME.DAT");
+_Static_assert(sizeof(WeaponType) == 40, "WeaponType must match UNITS.DAT");
+_Static_assert(sizeof(UnitType) == 180, "UnitType must match UNITS.DAT");
+_Static_assert(sizeof(FeatureType) == 38, "FeatureType must match UNITS.DAT and the missions'");
+_Static_assert(sizeof(PlacedUnit) == 14, "PlacedUnit must match the missions'");
 
 static char err[160];
 
@@ -62,18 +72,48 @@ static uint8_t* load_file(const char* name, int32_t* len, int st, int twice) {
     return buf;
 }
 
-static uint16_t rd16(const uint8_t* p) {
-    return (uint16_t)(p[0] << 8 | p[1]);
-}
-
-static uint32_t rd32(const uint8_t* p) {
-    return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3];
-}
-
 static const uint8_t* align4(const uint8_t* base, const uint8_t* p) {
     while ((p - base) & 3)
         p++;
     return p;
+}
+
+static int wrong_version(const char* name) {
+    sprintf(err, "can't use %s from another version", name);
+    return 0;
+}
+
+int load_game(void) {
+    uint8_t* f = load_file("GAME.DAT", 0, 0, 0);
+    const uint8_t* p;
+    if (!f)
+        return 0;
+    if (memcmp(f, "OAG3", 4))
+        return wrong_version("GAME.DAT");
+    ncampaigns = rd16(f + 4);
+    nmissions = rd16(f + 6);
+    /* f + 8: the worlds, which each mission names */
+    ntracks = rd16(f + 10);
+    p = f + 16;
+    /* the records are used where they lie: they are all an even length */
+    campaigns = (Campaign*)p;
+    p += ncampaigns * sizeof(Campaign);
+    missions = (MissionInfo*)p;
+    p += nmissions * sizeof(MissionInfo);
+    tracks = (Track*)p;
+    return 1;
+}
+
+int find_mission(const char* file) {
+    int i, j;
+    for (i = 0; i < nmissions; i++) {
+        for (j = 0; file[j] && missions[i].file[j]; j++)
+            if (toupper((unsigned char)file[j]) != missions[i].file[j])
+                break;
+        if (!file[j] && !missions[i].file[j])
+            return i;
+    }
+    return -1;
 }
 
 int load_units(void) {
@@ -84,75 +124,121 @@ int load_units(void) {
     nweapons = rd16(f + 4);
     nunittypes = rd16(f + 6);
     nclasses = rd16(f + 8);
-    if (memcmp(f, "OAU2", 4) || nunittypes > MAX_UNITTYPES) {
-        strcpy(err, "can't use UNITS.DAT from another version");
-        return 0;
-    }
-    p = f + 10 + nclasses * 3; /* each class's slope and depths: the converter's alone */
-    weapons = tt_alloc_any(nweapons * (int32_t)sizeof(WeaponType));
-    unittypes = tt_alloc_any(nunittypes * (int32_t)sizeof(UnitType));
-    memcpy(weapons, p, nweapons * sizeof(WeaponType));
+    if (memcmp(f, "OAU3", 4) || nunittypes > MAX_UNITTYPES || nclasses > MAX_CLASSES)
+        return wrong_version("UNITS.DAT");
+    /* each class's slope and depths: the converter's alone */
+    p = f + 10 + nclasses * 3;
+    if ((p - f) & 1)
+        p++;
+    weapons = (WeaponType*)p;
     p += nweapons * sizeof(WeaponType);
-    memcpy(unittypes, p, nunittypes * sizeof(UnitType));
+    unittypes = (UnitType*)p;
     p += nunittypes * sizeof(UnitType);
-    p = align4(f, p);
-    unit_bank = p + 4;
+    wrecks = (FeatureType*)p;
     return 1;
 }
 
 int load_common(void) {
     uint8_t* f = load_file("COMMON.DAT", 0, 0, 0);
-    const uint8_t* p;
-    int i, j, ncur, npic, nbtn, ntit;
-    uint32_t panel, font, fog;
+    const uint8_t* bank;
     if (!f)
         return 0;
-    if (memcmp(f, "OAC2", 4)) {
-        strcpy(err, "can't use COMMON.DAT from another version");
-        return 0;
+    if (memcmp(f, "OAC3", 4))
+        return wrong_version("COMMON.DAT");
+    bank = f + 16;
+    common.font = bank + rd32(f + 4);
+    common.fog = (const uint16_t*)(bank + rd32(f + 8));
+    return 1;
+}
+
+int load_world(int n) {
+    char name[16];
+    uint8_t* f;
+    const uint8_t* p;
+    int i, ncur, ntit;
+    if (world.num == n)
+        return 1;
+    if (world.block) {
+        tt_free(world.block);
+        tt_free(world.anim);
+        world.block = 0;
+        world.anim = 0;
+        world.num = 0;
     }
+    sprintf(name, "WORLD%d.DAT", n);
+    f = load_file(name, 0, 0, 0);
+    if (!f)
+        return 0;
+    world.block = f;
+    if (memcmp(f, "OAW3", 4))
+        return wrong_version(name);
     for (i = 0; i < 16; i++)
-        common.palette[i] = rd16(f + 4 + i * 2);
+        world.palette[i] = rd16(f + 4 + i * 2);
     p = f + 36;
-    panel = rd32(p);
-    common.nfeat = rd16(p + 4);
-    common.nanim = rd16(p + 6);
-    ncur = rd16(p + 8);
-    npic = rd16(p + 10);
-    nbtn = rd16(p + 12);
-    ntit = rd16(p + 14);
-    font = rd32(p + 16);
-    fog = rd32(p + 20);
-    p += 24;
-    if (ncur != CUR_COUNT || nbtn != BTN_COUNT || ntit != TITLE_COUNT) {
-        strcpy(err, "can't use COMMON.DAT from another version");
-        return 0;
-    }
-    common.feat = tt_alloc_any(common.nfeat * (int32_t)sizeof(FeatureType));
-    memcpy(common.feat, p, common.nfeat * sizeof(FeatureType));
-    p += common.nfeat * sizeof(FeatureType);
-    common.anim = tt_alloc_any(common.nanim * (int32_t)sizeof(Anim));
-    for (i = 0; i < common.nanim; i++, p += 8) {
-        common.anim[i].nframes = rd16(p);
-        common.anim[i].table = rd32(p + 4);
+    world.nanim = rd16(p);
+    ncur = rd16(p + 2);
+    ntit = rd16(p + 4);
+    p += 6;
+    if (ncur != CUR_COUNT || ntit != TITLE_COUNT)
+        return wrong_version(name);
+    memcpy(world.beam, p, 256);
+    p += 256;
+    world.anim = tt_alloc_any(world.nanim * (int32_t)sizeof(Anim) + 4);
+    for (i = 0; i < world.nanim; i++, p += 8) {
+        world.anim[i].nframes = rd16(p);
+        world.anim[i].table = rd32(p + 4);
     }
     for (i = 0; i < CUR_COUNT; i++, p += 4)
-        common.cursor[i] = rd32(p);
-    common.pic = tt_alloc_any(npic * 4L);
-    for (i = 0; i < npic; i++, p += 4)
-        common.pic[i] = rd32(p);
-    for (i = 0; i < BTN_COUNT; i++, p += 26) {
-        common.button_frames[i] = rd16(p);
-        for (j = 0; j < 6; j++)
-            common.button[i][j] = rd32(p + 2 + j * 4);
-    }
+        world.cursor[i] = rd32(p);
     for (i = 0; i < TITLE_COUNT; i++, p += 4)
-        common.title[i] = rd32(p);
+        world.title[i] = rd32(p);
     p = align4(f, p);
-    common.bank = p + 4;
-    common.panel = (const uint16_t*)(common.bank + panel);
-    common.font = common.bank + font;
-    common.fog = (const uint16_t*)(common.bank + fog);
+    world.bank = p + 4;
+    world.num = n;
+    return 1;
+}
+
+int load_panel(int n, int side, uint8_t* screen) {
+    char name[16];
+    long fh, size, rest;
+    uint8_t* f;
+    const uint8_t* p;
+    int i, j, nbtn;
+    if (panel.block) {
+        tt_free(panel.block);
+        panel.block = 0;
+    }
+    sprintf(name, "PANEL%d%c.DAT", n, side ? 'C' : 'A');
+    fh = Fopen(name, 0);
+    if (fh < 0) {
+        sprintf(err, "can't find %s", name);
+        return 0;
+    }
+    size = Fseek(0, (short)fh, 2);
+    (void)Fseek(0, (short)fh, 0);
+    rest = size - SCREEN_BYTES;
+    f = rest > 0 ? tt_alloc_any(rest + 4) : 0;
+    if (!f || Fread((short)fh, SCREEN_BYTES, screen) != SCREEN_BYTES ||
+        Fread((short)fh, rest, f) != rest) {
+        (void)Fclose((short)fh);
+        tt_free(f);
+        sprintf(err, f ? "can't read %s" : "needs more free RAM to load %s", name);
+        return 0;
+    }
+    (void)Fclose((short)fh);
+    panel.block = f;
+    nbtn = rd16(f);
+    if (nbtn != BTN_COUNT)
+        return wrong_version(name);
+    p = f + 2;
+    for (i = 0; i < BTN_COUNT; i++, p += 26) {
+        panel.button_frames[i] = rd16(p);
+        for (j = 0; j < 6; j++)
+            panel.button[i][j] = rd32(p + 2 + j * 4);
+    }
+    /* the block starts where the picture ended, on a 4-byte boundary */
+    p = align4(f, p);
+    panel.bank = p + 4;
     return 1;
 }
 
@@ -201,10 +287,8 @@ int load_sounds(void) {
     if (!f)
         return 0;
     head = twice ? f + size : f;
-    if (memcmp(head, "OAS2", 4)) {
-        strcpy(err, "can't use SOUNDS.DAT from another version");
-        return 0;
-    }
+    if (memcmp(head, "OAS2", 4))
+        return wrong_version("SOUNDS.DAT");
     sounds.n = rd16(head + 4);
     sounds.ofs = tt_alloc_any(sounds.n * 4L);
     sounds.len = tt_alloc_any(sounds.n * 4L);
@@ -241,15 +325,13 @@ int load_mission(int n) {
     int i, j, cells;
     uint32_t nops;
     free_mission();
-    sprintf(name, "MISS%d.DAT", n);
+    sprintf(name, "%s.DAT", missions[n].file);
     f = load_file(name, 0, 0, 0);
     if (!f)
         return 0;
     mission.block = f;
-    if (memcmp(f, "OAM2", 4) || rd16(f + 44 + 18) > 8 || rd16(f + 44 + 26) > 3) {
-        sprintf(err, "can't use %s from another version", name);
-        return 0;
-    }
+    if (memcmp(f, "OAM3", 4) || rd16(f + 44 + 20) > 8 || rd16(f + 44 + 28) > 3)
+        return wrong_version(name);
     memcpy(mission.name, f + 4, 40);
     p = f + 44;
     mission.w = rd16(p);
@@ -257,18 +339,31 @@ int load_mission(int n) {
     mission.tw = rd16(p + 4);
     mission.th = rd16(p + 6);
     mission.ntiles = rd16(p + 8);
-    /* p + 10: the sea level, which the cell flags already hold */
+    mission.sealevel = rd16(p + 10);
     mission.mw = rd16(p + 12);
     mission.mh = rd16(p + 14);
-    mission.nfeat = rd16(p + 16);
-    mission.ncond = rd16(p + 18);
-    /* p + 20: the sun's strength, which solar collectors' output already holds */
-    mission.minwind = rd16(p + 22);
-    mission.maxwind = rd16(p + 24);
-    mission.nschema = rd16(p + 26);
-    p += 28;
+    mission.nftypes = rd16(p + 16);
+    mission.nfeat = rd16(p + 18);
+    mission.ncond = rd16(p + 20);
+    /* p + 22: the sun's strength, which solar collectors' output already holds */
+    mission.minwind = rd16(p + 24);
+    mission.maxwind = rd16(p + 26);
+    mission.nschema = rd16(p + 28);
+    mission.tidal = rd16(p + 30);
+    mission.world = rd16(p + 32) + 1;
+    mission.side = rd16(p + 34);
+    /* p + 36: whether it is a lava world, which its tiles show */
+    mission.nneed = rd16(p + 38);
+    p += 40;
     for (i = 0; i < mission.ncond; i++, p += 10)
         memcpy(&mission.cond[i], p, 10);
+    mission.skirmish = 0;
+    mission.need = (uint16_t*)p;
+    p += mission.nneed * 2;
+    mission.allowed = p;
+    p += 32;
+    mission.ftypes = (FeatureType*)p;
+    p += mission.nftypes * sizeof(FeatureType);
     mission.featpos = (uint16_t*)p;
     p += mission.nfeat * 6;
     nops = rd32(p);
@@ -298,22 +393,9 @@ int load_mission(int n) {
     p += mission.mh * (mission.mw / 16) * 8;
     p = align4(f, p);
     mission.tiles = (uint8_t*)p;
+    p += (int32_t)mission.ntiles * 512;
+    mission.bank = p + 4;
     return 1;
-}
-
-void mission_name(int n, char* name) {
-    char file[16];
-    long fh;
-    sprintf(file, "MISS%d.DAT", n);
-    name[0] = 0;
-    fh = Fopen(file, 0);
-    if (fh < 0)
-        return;
-    if (Fseek(4, (short)fh, 0) == 4 && Fread((short)fh, 40, name) == 40)
-        name[39] = 0;
-    else
-        name[0] = 0;
-    (void)Fclose((short)fh);
 }
 
 uint8_t* load_picture(const char* name, uint16_t* pal) {
@@ -332,8 +414,4 @@ char* load_text(const char* name) {
     if (t)
         t[len] = 0;
     return t;
-}
-
-int8_t* load_voice(const char* name, int32_t* len) {
-    return (int8_t*)load_file(name, len, 0, 0);
 }

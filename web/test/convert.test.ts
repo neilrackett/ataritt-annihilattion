@@ -16,7 +16,7 @@ import { PYODIDE_VERSION, SCRIPTS, checkInstaller, convert, type Stage } from '.
 const REPO = join(import.meta.dirname, '..', '..');
 const INSTALLER = join(REPO, 'tmp', 'ta-demo', 'Total Annihilation.exe');
 const DIST = join(REPO, 'dist');
-const have = existsSync(INSTALLER) && existsSync(join(DIST, 'MISS3.DAT'));
+const have = existsSync(INSTALLER) && existsSync(join(DIST, 'GAME.DAT'));
 
 describe('checkInstaller', () => {
 	it('refuses a file of the wrong size', async () => {
@@ -40,8 +40,13 @@ describe.skipIf(!have)('convert', () => {
 		console.log(`converted in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
 
 		expect(stages).toEqual(['unpacking', 'converting']);
-		// every file build.sh makes but the program, and no others
-		const expected = readdirSync(DIST).filter((n) => n !== 'ANNIHILA.TOS').sort();
+		// every file build.sh makes but the program, and no others: not the
+		// full game's folder, nor what the game writes when played from dist
+		const ours = ['ANNIHILA.TOS', 'PROGRESS.DAT', 'OATEST.TXT', 'OALOG.TXT'];
+		const expected = readdirSync(DIST, { withFileTypes: true })
+			.filter((e) => e.isFile() && !ours.includes(e.name))
+			.map((e) => e.name)
+			.sort();
 		expect(files.map((f) => f.name)).toEqual(expected);
 		for (const file of files) {
 			const want = readFileSync(join(DIST, file.name));

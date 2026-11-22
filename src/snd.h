@@ -4,38 +4,64 @@
  */
 
 /*
- * Sound effects on the TT's DMA sound: one voice, so a new effect takes it
- * over unless the one playing matters more (prio), and the briefings'
- * narration streams through the same voice.
+ * Sound on the TT's DMA sound: a mixer of four channels of effects and a
+ * stream read from the disk as it plays (a briefing's narration, or the
+ * CD's music), signed 8-bit mono at 12517 Hz. DMA sound plays a short ring
+ * in ST-RAM over and over; snd_update(), once a frame, mixes what comes
+ * next into the part it has played.
  */
 #ifndef SND_H
 #define SND_H
 
 #include <stdint.h>
 
-/// Plays a sound effect, unless sound is off or a sound that matters more
-/// plays; one of the same rank is cut off only after it has played 80 ms.
+/// Takes the ring in ST-RAM and starts DMA sound on it, silent.
+///
+/// @return 1, or 0 when ST-RAM is short (the game is then silent)
+int snd_init(void);
+
+/// Stops DMA sound and gives the ring back.
+void snd_exit(void);
+
+/// Plays a sound effect on a free channel, or one playing something that
+/// matters less (prio); the same sound started again within 60 ms is left
+/// out, so that a volley sounds once.
 ///
 /// @param id the sound, an index into SOUNDS.DAT (SND_* for the interface's)
 /// @param prio how much it matters: higher cuts off lower
 void snd_play(int id, int prio);
 
-/// Plays a long run of samples at 12517 Hz that no effect may cut off, such
-/// as a briefing's narration, through a ring of 64 KB in ST-RAM; keep
-/// calling snd_stream_update() while it plays. Plays nothing when sound is
-/// off or ST-RAM is short.
+/// Plays a file of signed 8-bit samples at 12517 Hz on the stream channel,
+/// in place of what it played; it is read as it plays.
 ///
-/// @param data signed 8-bit samples, in any RAM, kept until it stops
-/// @param len the number of samples
-void snd_stream(const int8_t* data, int32_t len);
+/// @param name the file
+/// @return 1 when it plays, 0 when it cannot be opened
+int snd_stream_file(const char* name);
 
-/// Refills the stream's ring, and stops it after its last sample. Call it
-/// at least every 2.6 seconds at 12517 Hz.
-void snd_stream_update(void);
+/// Tells whether the stream channel plays.
+///
+/// @return nonzero while it does
+int snd_stream_busy(void);
 
-/// Stops whatever plays.
+/// Mixes what comes next, reading the stream's file when it needs more.
+/// Call it once a frame; the ring holds about 0.65 seconds.
+void snd_update(void);
+
+/// Plays the CD's music in a mission: calm tracks, or loud ones while
+/// there is fighting, each to its end and then another of the kind wanted.
+/// Does nothing when the data has no music.
+///
+/// @param battle nonzero while the player's units fight
+void snd_music(int battle);
+
+/// Stops the effects and the stream.
 void snd_stop(void);
 
+/// Stops the effects and the stream, and clears the ring: the end of a
+/// mission or a film.
+void snd_silence(void);
+
 extern int snd_enabled; ///< 0 when the player turned sound off
+extern int snd_music_on; ///< 0 when the player turned the music off
 
 #endif

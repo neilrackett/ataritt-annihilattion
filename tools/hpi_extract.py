@@ -4,9 +4,13 @@
 """Unpacks a Total Annihilation HPI archive into a folder.
 
 usage: hpi_extract.py archive.hpi outdir
+
+Hpi reads an archive held in memory, for other tools: its files by path,
+lower case.
 """
 import os, struct, sys, zlib
 import numpy as np
+
 
 def lz77(src, size):
     out = bytearray()
@@ -30,66 +34,85 @@ def lz77(src, size):
                     w = (w + 1) & 0xfff; p = (p + 1) & 0xfff
     return bytes(out)
 
-def main():
-    src, outdir = sys.argv[1], sys.argv[2]
-    raw = np.fromfile(src, dtype=np.uint8)
-    magic, ver, dsize, hkey, start = struct.unpack_from('<5I', raw.tobytes()[:20])
-    assert magic == 0x49504148 and ver == 0x10000
-    k = hkey & 0xff
-    if k:
-        key = (~((k >> 6) | (k << 2))) & 0xff
-        pos = (np.arange(len(raw), dtype=np.uint32) & 0xff).astype(np.uint8)
-        dec = pos ^ (~raw) ^ np.uint8(key)
-        dec[:20] = raw[:20]
-    else:
-        dec = raw
-    d = dec.tobytes()
 
-    def cstr(o):
-        return d[o:d.index(b'\0', o)].decode('latin-1')
+class Hpi:
+    """An HPI archive's bytes: files lists its paths, read() unpacks one."""
 
-    def readfile(o):
-        off, size, comp = struct.unpack_from('<IIB', d, o)
+    def __init__(self, data):
+        raw = np.frombuffer(data, dtype=np.uint8)
+        magic, ver, dsize, hkey, start = struct.unpack_from('<5I', data[:20])
+        assert magic == 0x49504148 and ver == 0x10000, 'not an HPI archive'
+        k = hkey & 0xff
+        if k:
+            key = (~((k >> 6) | (k << 2))) & 0xff
+            pos = (np.arange(len(raw), dtype=np.uint32) & 0xff).astype(np.uint8)
+            dec = pos ^ (~raw) ^ np.uint8(key)
+            dec[:20] = raw[:20]
+            self.d = dec.tobytes()
+        else:
+            self.d = bytes(data)
+        self.files = {}         # path -> its entry's offset, in the archive's order
+        self.dirs = []          # every folder's path, empty ones too
+        self._walk(start, '')
+
+    def _cstr(self, o):
+        return self.d[o:self.d.index(b'\0', o)].decode('latin-1')
+
+    def _walk(self, o, path):
+        n, lst = struct.unpack_from('<II', self.d, o)
+        for e in range(n):
+            no, do, isdir = struct.unpack_from('<IIB', self.d, lst + 9 * e)
+            p = path + self._cstr(no).lower()
+            if isdir:
+                self.dirs.append(p)
+                self._walk(do, p + '/')
+            else:
+                self.files[p] = do
+
+    def read(self, p):
+        d = self.d
+        off, size, comp = struct.unpack_from('<IIB', d, self.files[p])
         if comp == 0:
             return d[off:off + size]
         nchunks = (size + 65535) // 65536
-        p = off + 4 * nchunks
+        q = off + 4 * nchunks
         out = bytearray()
         for c in range(nchunks):
             csz = struct.unpack_from('<I', d, off + 4 * c)[0]
-            hdr = d[p:p + 19]
-            _, _, ctype, enc, comp_sz, dec_sz, _ = struct.unpack('<IBBBIII', hdr)
-            payload = bytearray(d[p + 19:p + 19 + comp_sz])
+            _, _, ctype, enc, comp_sz, dec_sz, _ = struct.unpack('<IBBBIII', d[q:q + 19])
+            payload = d[q + 19:q + 19 + comp_sz]
             if enc:
-                a = np.frombuffer(bytes(payload), dtype=np.uint8)
+                a = np.frombuffer(payload, dtype=np.uint8)
                 idx = (np.arange(len(a)) & 0xff).astype(np.uint8)
                 payload = ((a - idx) ^ idx).astype(np.uint8).tobytes()
             if ctype == 1:
-                out += lz77(bytes(payload), dec_sz)
+                out += lz77(payload, dec_sz)
             elif ctype == 2:
-                out += zlib.decompress(bytes(payload))
+                out += zlib.decompress(payload)
             else:
                 out += payload
-            p += csz
+            q += csz
         return bytes(out[:size])
 
-    count = 0
-    def walk(o, path):
-        nonlocal count
-        n, lst = struct.unpack_from('<II', d, o)
-        for e in range(n):
-            no, do, isdir = struct.unpack_from('<IIB', d, lst + 9 * e)
-            name = cstr(no)
-            p = os.path.join(path, name.lower())
-            if isdir:
-                os.makedirs(p, exist_ok=True)
-                walk(do, p)
-            else:
-                with open(p, 'wb') as f:
-                    f.write(readfile(do))
-                count += 1
-    os.makedirs(outdir, exist_ok=True)
-    walk(start, outdir)
-    print(count, 'files')
+    def extract(self, outdir):
+        """Writes every file under outdir; returns how many."""
+        for p in self.dirs:
+            os.makedirs(os.path.join(outdir, *p.split('/')), exist_ok=True)
+        for p in self.files:
+            dst = os.path.join(outdir, *p.split('/'))
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            with open(dst, 'wb') as f:
+                f.write(self.read(p))
+        return len(self.files)
 
-main()
+
+def main():
+    src, outdir = sys.argv[1], sys.argv[2]
+    os.makedirs(outdir, exist_ok=True)
+    with open(src, 'rb') as f:
+        n = Hpi(f.read()).extract(outdir)
+    print(n, 'files')
+
+
+if __name__ == '__main__':
+    main()

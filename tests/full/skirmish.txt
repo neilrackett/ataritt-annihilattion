@@ -1,0 +1,12 @@
+# Copyright (C) 2026 Neil Rackett
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Ten minutes of a skirmish (tools/test_missions.sh tests/full/skirmish.txt
+# sk24): the computer builds its base from its Commander, then attacks
+mission MISSION 1
+fast
+wait 4500
+res
+wait 4500
+res
+units
+end

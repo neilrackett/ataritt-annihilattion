@@ -1,0 +1,15 @@
+# Copyright (C) 2026 Neil Rackett
+# SPDX-License-Identifier: GPL-3.0-or-later
+# A full game's mission (tools/test_missions.sh): its start, then its whole
+# map, then a few minutes of play, fast
+mission MISSION 1
+wait 2
+shot L1
+explore
+fast
+wait 1200
+shot L2
+sprites
+stats
+res
+end

@@ -174,12 +174,17 @@ worker. `pnpm run dev` serves it locally. Only the data is converted:
 `docs/images/annihilattion.mp4` and `.gif` were recorded in Hatari with its
 AVI output (`--avi-file`, started and stopped through `--cmd-fifo`) while
 two scripts ran in real time, with `slow`: the menus and briefing, then
-mission 2 with every unit sent at the CORE base. The march script presses C
-once, then uses `follow` so that the view scrolls after the Commander. The
-MP4 joins the two with ffmpeg (x264, `-tune animation`). The GIF is the
-march at 12 frames a second through a 16-colour palette made from
-`docs/images/annihilattion.png`. End the march before anything you don't
-want shown, such as a DEFEAT screen.
+mission 2. The battle script moves the pointer a step a frame with `mouse`:
+it drags a box round the army, sends it at the CORE base from the minimap
+and scrolls down into the land no unit has seen. Then `follow` moves the
+pointer to the screen's edges to scroll after the Commander, and the script
+goes `fast` to the river between two recordings, from one `shot RECA` to the
+next `shot RECZ`. The MP4 joins the three with fades, using ffmpeg (x264,
+`-tune animation`). The GIF is the two battle recordings, cut together
+without a fade, at 12 frames a second through a 16-colour palette made from
+`docs/images/annihilattion.png`: a fade turns muddy in 16 colours. End the
+march before anything you don't want shown, such as a DEFEAT screen, and
+cut the briefing in a pause in the narration.
 
 ## On the real TT
 

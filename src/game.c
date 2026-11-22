@@ -135,10 +135,37 @@ static int find_commander(void) {
     return -1;
 }
 
-static int following; /* the view scrolls after the Commander (test scripts) */
+static int following;        /* the pointer scrolls the view after the Commander (test scripts) */
+static int follow_x, follow_y; /* where the pointer rests between pushes */
 
 void game_follow(int on) {
     following = on;
+    follow_x = mx();
+    follow_y = my();
+}
+
+/* A test script's follow: when the Commander strays from the middle of the
+ * view, the pointer goes to the screen's edges, as a player's would, and it
+ * comes back once the view has passed it a little. */
+static void follow_pointer(void) {
+    static uint32_t then;
+    static int push_x, push_y;
+    uint32_t dt = HZ200 - then;
+    int c = find_commander(), x = mx(), y = my(), tx, ty, dx, dy, d;
+    then += dt;
+    if (c < 0)
+        return;
+    dx = (units[c].x >> FIX) - (camx + VIEW_W / 2);
+    dy = unit_screen_y(&units[c]) - (camy + VIEW_H / 2);
+    push_x = dx > 96 ? 1 : dx < -96 ? -1 : push_x * dx < -32 ? 0 : push_x;
+    push_y = dy > 96 ? 1 : dy < -96 ? -1 : push_y * dy < -32 ? 0 : push_y;
+    tx = push_x > 0 ? SCREEN_W - 1 : push_x < 0 ? 0 : follow_x;
+    ty = push_y > 0 ? SCREEN_H - 1 : push_y < 0 ? 0 : follow_y;
+    /* 600 pixels a second */
+    d = 3 * (int)(dt > 20 ? 20 : dt);
+    x += tx > x + d ? d : tx < x - d ? -d : tx - x;
+    y += ty > y + d ? d : ty < y - d ? -d : ty - y;
+    test_mouse(x, y, mb());
 }
 
 /* The battlefield point under a screen point, z found through the ground's height */
@@ -2014,21 +2041,13 @@ static int handle_mouse(void) {
         return 0;
     /* scrolling at the screen's edges, EDGE_SPEED pixels a second however
      * fast the frames come: down by the pixel, across a group at a time once
-     * the pixels add up to one. A test script's follow pushes the same way
-     * towards the Commander when it strays from the middle of the view. */
+     * the pixels add up to one. */
     {
         static uint32_t then;
         static int32_t part; /* 200ths of a pixel not yet moved */
         static int across;   /* pixels across not yet moved, as a whole group */
         uint32_t now = HZ200, dt = now - then;
         int step, push_x = x <= 1 ? -1 : x >= SCREEN_W - 2, push_y = y <= 1 ? -1 : y >= SCREEN_H - 2;
-        int c = following ? find_commander() : -1;
-        if (c >= 0) {
-            int dx = (units[c].x >> FIX) - (camx + VIEW_W / 2);
-            int dy = unit_screen_y(&units[c]) - (camy + VIEW_H / 2);
-            push_x = dx > 64 ? 1 : dx < -64 ? -1 : 0;
-            push_y = dy > 48 ? 1 : dy < -48 ? -1 : 0;
-        }
         then = now;
         if (dt > 20)
             dt = 20; /* the first frame, or one after a wait: no leap */
@@ -2164,6 +2183,8 @@ int game_run(int difficulty) {
         int ticks = 0;
         if (test_hooks.next && test_hooks.next() < 0)
             break;
+        if (following)
+            follow_pointer();
         if (handle_keys() || handle_mouse()) {
             result = sim_result;
             break;

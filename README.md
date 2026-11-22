@@ -1,6 +1,6 @@
 # AnnihilaTTion
 
-<img src="./docs/images/annihilattion.gif" alt="The Commander's march on the CORE KBot base, in TT medium resolution" width="640" height="480"/>
+<img src="./docs/images/annihilattion.gif" alt="The army sent at the CORE KBot base, and the Commander's march on it, in TT medium resolution" width="640" height="480"/>
 
 Total Annihilation engine for the Atari TT, by [Neil Rackett](https://neilrackett.com/atarist)
 

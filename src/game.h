@@ -50,8 +50,8 @@ void test_key(uint16_t key);
 /// @param z the point's z, pixels
 void game_camera(int x, int z);
 
-/// Makes the view scroll after the Commander, at the speed of scrolling at
-/// the screen's edges, for test scripts' recordings.
+/// Makes the pointer scroll the view after the Commander from the screen's
+/// edges, as a player's would, for test scripts' recordings.
 ///
 /// @param on whether to follow
 void game_follow(int on);

@@ -23,7 +23,7 @@ then gives one command a line:
 | `fast`, `slow` | a tick every frame from now on, however long a frame takes; or back to 15 ticks a second |
 | `mouse X Y BUTTONS`, `key SCAN ASCII` | the pointer and buttons, or a key (hex) |
 | `camera X Z` | looks at a place on the battlefield |
-| `follow`, `follow 0` | scrolls the view after the Commander from now on, as scrolling at the screen's edges does; or stops |
+| `follow`, `follow 0` | from now on, moves the pointer to the screen's edges whenever the Commander strays from the middle of the view, so that the view scrolls after it as a player's would; or stops |
 | `explore` | uncovers the whole map, as if every part of it had been seen |
 | `shot NAME` | a screenshot |
 | `stats`, `units`, `res`, `proj`, `feat` | logs the timings, the units, both players' resources, the shots in flight, or the features in view |

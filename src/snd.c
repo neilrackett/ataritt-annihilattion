@@ -139,7 +139,7 @@ int snd_stream_file(const char* name) {
     stream_close();
     if (!snd_enabled || !ring)
         return 0;
-    sfh = Fopen(name, 0);
+    sfh = data_open(name);
     if (sfh < 0)
         return 0;
     s_eof = 0;

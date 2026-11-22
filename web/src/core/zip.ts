@@ -1,13 +1,16 @@
 // Copyright (C) 2026 Neil Rackett
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// The download: the converted files in an ANNIHILA folder, where
-// ANNIHILA.TOS goes too.
+// The download: the converted files in an ANNIHILA folder's DATA folder;
+// ANNIHILA.TOS goes in the ANNIHILA folder, beside it.
 
 import { zipSync, type Zippable } from 'fflate';
 import type { OutFile } from './convert';
 
 export const FOLDER = 'ANNIHILA';
+
+/** The folder beside ANNIHILA.TOS that the program reads its data from. */
+export const DATA = 'DATA';
 
 /**
  * Every entry is stored, not deflated, as RExtract's are: a strict reader
@@ -17,7 +20,7 @@ export const FOLDER = 'ANNIHILA';
 export function buildZip(files: OutFile[]): Uint8Array {
 	const entries: Zippable = {};
 	for (const file of files) {
-		entries[`${FOLDER}/${file.name}`] = file.bytes;
+		entries[`${FOLDER}/${DATA}/${file.name}`] = file.bytes;
 	}
 	return zipSync(entries, { level: 0 });
 }

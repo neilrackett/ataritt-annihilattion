@@ -37,8 +37,27 @@ _Static_assert(sizeof(PlacedUnit) == 14, "PlacedUnit must match the missions'");
 
 static char err[160];
 
+/* The data's folder, DATA beside the program, from load_game() on: the test
+ * script, read before it, lies beside the program */
+static char dir[6];
+
+/* A data file's name with its folder */
+static const char* path(const char* name) {
+    static char buf[32];
+    sprintf(buf, "%s%s", dir, name);
+    return buf;
+}
+
 const char* data_error(void) {
     return err;
+}
+
+long data_open(const char* name) {
+    return Fopen(path(name), 0);
+}
+
+long data_create(const char* name) {
+    return Fcreate(path(name), 0);
 }
 
 /* Reads a whole file into memory from tt_alloc_any (or ST-RAM); with twice,
@@ -46,9 +65,9 @@ const char* data_error(void) {
 static uint8_t* load_file(const char* name, int32_t* len, int st, int twice) {
     long fh, size, room;
     uint8_t* buf;
-    fh = Fopen(name, 0);
+    fh = data_open(name);
     if (fh < 0) {
-        sprintf(err, "can't find %s", name);
+        sprintf(err, "can't find %s", path(name));
         return 0;
     }
     size = Fseek(0, (short)fh, 2);
@@ -84,8 +103,10 @@ static int wrong_version(const char* name) {
 }
 
 int load_game(void) {
-    uint8_t* f = load_file("GAME.DAT", 0, 0, 0);
+    uint8_t* f;
     const uint8_t* p;
+    strcpy(dir, "DATA\\");
+    f = load_file("GAME.DAT", 0, 0, 0);
     if (!f)
         return 0;
     if (memcmp(f, "OAG3", 4))
@@ -209,9 +230,9 @@ int load_panel(int n, int side, uint8_t* screen) {
         panel.block = 0;
     }
     sprintf(name, "PANEL%d%c.DAT", n, side ? 'C' : 'A');
-    fh = Fopen(name, 0);
+    fh = data_open(name);
     if (fh < 0) {
-        sprintf(err, "can't find %s", name);
+        sprintf(err, "can't find %s", path(name));
         return 0;
     }
     size = Fseek(0, (short)fh, 2);

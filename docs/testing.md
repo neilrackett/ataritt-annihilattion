@@ -12,12 +12,12 @@ program's log is `OALOG.TXT` there, and every shot the script took is a PNG.
 - `PRG` names another program to run, to compare two builds.
 - `PROF=1` also writes Hatari's profile, which `tools/profsum.py` sums per
   function.
-- `DATA` names another folder of data, such as `dist/full` for the full
-  game.
+- `DATA` names another game's folder, its data in `DATA` there, such as
+  `dist/full` for the full game.
 
 `tools/test_missions.sh SCRIPT [MISSION...]` runs a script on each of the
 full game's missions and skirmish maps in turn, or those named
-(`ac05 cc12 sk01`), with the data in
+(`ac05 cc12 sk01`), with the game in
 `dist/full`: the script's word `MISSION` becomes the mission's name, and a
 line a mission says how it ended and what the units' sprites took.
 
@@ -72,5 +72,5 @@ and, for the full game with `tools/test_missions.sh`, in `tests/full/`:
   (`skirmish.txt`, on the `sk` maps)
 
 The web converter has its own test: `pnpm test` in `web/` converts the
-installer through Pyodide and checks every file against `dist`
+installer through Pyodide and checks every file against `dist/DATA`
 ([building](building.md#or-in-a-browser)).

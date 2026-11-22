@@ -99,7 +99,7 @@ int spr_open(int n, int32_t bytes) {
     uint8_t head[8];
     spr_close();
     sprintf(name, "WORLD%d.SPR", n);
-    fh = Fopen(name, 0);
+    fh = data_open(name);
     if (fh < 0 || Fread((short)fh, 8, head) != 8 || memcmp(head, "OAS3", 4)) {
         spr_close();
         return 0;

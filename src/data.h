@@ -339,10 +339,24 @@ extern Panel panel;
 extern Sounds sounds;
 extern Mission mission;
 
-/* The files are read from the current folder. A load that fails leaves its
- * reason for data_error(). */
+/* The files are read from the DATA folder beside the program, from
+ * load_game() on; before it, from the program's own folder. A load that
+ * fails leaves its reason for data_error(). */
 
-/// Loads GAME.DAT: the campaigns, their missions and the music.
+/// Opens a data file to read.
+///
+/// @param name the file, such as "FILM1.DAT"
+/// @return its handle, or a negative GEMDOS error
+long data_open(const char* name);
+
+/// Creates or empties a file in the data's folder, to write.
+///
+/// @param name the file, such as "PROGRESS.DAT"
+/// @return its handle, or a negative GEMDOS error
+long data_create(const char* name);
+
+/// Loads GAME.DAT, moving on to the data's folder: the campaigns, their
+/// missions and the music.
 ///
 /// @return 1 when loaded, 0 when not
 int load_game(void);

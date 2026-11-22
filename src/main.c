@@ -31,7 +31,7 @@ static const char* difficulty_names[3] = {"Easy", "Medium", "Hard"};
 static uint8_t progress[8];
 
 static void load_progress(void) {
-    long fh = Fopen("PROGRESS.DAT", 0);
+    long fh = data_open("PROGRESS.DAT");
     int i;
     memset(progress, 1, sizeof progress);
     if (fh >= 0) {
@@ -44,7 +44,7 @@ static void load_progress(void) {
 }
 
 static void save_progress(void) {
-    long fh = Fcreate("PROGRESS.DAT", 0);
+    long fh = data_create("PROGRESS.DAT");
     if (fh >= 0) {
         (void)Fwrite((short)fh, sizeof progress, progress);
         (void)Fclose((short)fh);
@@ -388,6 +388,8 @@ static int test_next(void) {
     return -1;
 }
 
+/* Reads the test script, OATEST.TXT, and starts its log, OALOG.TXT, both
+ * beside the program: before load_game() moves on to the data's folder */
 static int load_test(void) {
     char line[128];
     test_text = load_text("OATEST.TXT");

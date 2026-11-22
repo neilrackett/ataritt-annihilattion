@@ -4,9 +4,9 @@
 #
 # Build with the gcc 13 mintelf cross compiler, here through
 # atarist-toolkit-docker:  STCMD_NO_TTY=1 stcmd make
-# The program is dist/ANNIHILA.TOS, beside the data tools/convert.py writes
-# there (build.sh): dist holds only what the TT needs, and the objects go in
-# build.
+# The program is dist/ANNIHILA.TOS, beside the DATA folder tools/convert.py
+# writes (build.sh): dist holds only what the TT needs, and the objects go
+# in build.
 
 CC := m68k-atari-mintelf-gcc
 CFLAGS := -m68020-60 -mtune=68030 -O2 -fomit-frame-pointer -Wall -Wextra -Wno-unused-parameter -std=gnu99

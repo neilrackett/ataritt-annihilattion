@@ -10,18 +10,21 @@
 # tmp/runs/NAME: its OALOG.TXT is the program's log, and every
 # SHOT*.RAW the script took is also written as PNG.
 #
-# Environment: as hatari_tt.sh, and DATA (default: dist),
-# PRG (the program, default: dist/ANNIHILA.TOS), FAST (default on).
+# Environment: as hatari_tt.sh, and DATA (the game's folder, whose DATA
+# folder holds the data; default: dist), PRG (the program, default:
+# dist/ANNIHILA.TOS), FAST (default on).
 set -u
 NAME=$1; TEST=$2; SECS=${3:-300}
 . "$(dirname "$0")/hatari_tt.sh"
 DATA=${DATA:-$GAME}
 R=$REPO/tmp/runs/$NAME
-rm -rf "$R"; mkdir -p "$R/hd"
-# the data is linked, not copied; only the files the program reads, so that
-# nothing written in the run's folder reaches DATA through a link
-for f in "$DATA"/*.DAT "$DATA"/*.IMG "$DATA"/*.SND "$DATA"/*.SPR "$DATA"/[A-Z][A-Z][0-9][0-9].TXT; do
-  ln "$f" "$R/hd/" 2>/dev/null || cp "$f" "$R/hd/"
+rm -rf "$R"; mkdir -p "$R/hd/DATA"
+# the data is linked, not copied; not the progress saved when it was played,
+# which a run starts without and writes, so that nothing written in the run's
+# folder reaches DATA through a link
+for f in "$DATA"/DATA/*; do
+  [ "${f##*/}" = PROGRESS.DAT ] && continue
+  ln "$f" "$R/hd/DATA/" 2>/dev/null || cp "$f" "$R/hd/DATA/"
 done
 cp "${PRG:-$GAME/ANNIHILA.TOS}" "$R/hd/ANNIHILA.TOS"
 cp "$TEST" "$R/hd/OATEST.TXT"

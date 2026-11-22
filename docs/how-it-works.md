@@ -8,8 +8,8 @@ convert to the same files, so one program plays both.
 ## The converter
 
 `tools/convert.py` reads the game's own formats (`tools/ta.py`: TDF, FBI,
-OTA and GUI text, GAF pictures, 3DO models, TNT maps) and writes, all
-big-endian for the 68030:
+OTA and GUI text, GAF pictures, 3DO models, TNT maps) and writes, into the
+`DATA` folder beside `ANNIHILA.TOS`, all big-endian for the 68030:
 
 | File | What it holds |
 | --- | --- |

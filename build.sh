@@ -6,7 +6,8 @@
 # build.sh --full [DISC1 DISC2]
 #
 # Builds AnnihilaTTion into dist, the folder to copy to the TT: ANNIHILA.TOS
-# and the converted game data. Without --full, it plays the demo:
+# and, in its DATA folder, the converted game data. Without --full, it plays
+# the demo:
 #
 #   1. Unpacks the Total Annihilation demo (1997) installer, "Total
 #      Annihilation.exe", into tmp/ta-demo/data, if that is not done yet:
@@ -25,7 +26,7 @@
 #      images) in tmp/disks' DISK1 and DISK2 folders.
 #   2. Converts the full game's data (about half an hour; ffmpeg, when
 #      there is one, for the films), if the converter is newer.
-#   3. Compiles ANNIHILA.TOS, and copies it into dist/full.
+#   3. Compiles ANNIHILA.TOS, and copies it into dist/full, beside its DATA.
 #
 # Stops at the first step that fails. Needs python3 with numpy and Pillow.
 set -euo pipefail
@@ -84,10 +85,10 @@ else
   fi
 fi
 
-if [ ! -f "$OUT/GAME.DAT" ] || [ -n "$(find "$HERE/tools" -name '*.py' -newer "$OUT/GAME.DAT")" ]; then
+if [ ! -f "$OUT/DATA/GAME.DAT" ] || [ -n "$(find "$HERE/tools" -name '*.py' -newer "$OUT/DATA/GAME.DAT")" ]; then
   echo "Converting $WHAT..."
-  mkdir -p "$OUT"
-  python3 "$HERE/tools/convert.py" "$SRC/data" "$OUT" "$PREVIEWS"
+  mkdir -p "$OUT/DATA"
+  python3 "$HERE/tools/convert.py" "$SRC/data" "$OUT/DATA" "$PREVIEWS"
 fi
 
 cd "$HERE"
@@ -100,5 +101,5 @@ if [ -n "$FULL" ]; then
   cp "$REPO/dist/ANNIHILA.TOS" "$OUT/ANNIHILA.TOS"
 fi
 echo
-echo "Done: copy the files in $OUT to the TT (for example to C:\\ANNIHILA) and run ANNIHILA.TOS."
-du -sh "$OUT"
+echo "Done: copy ANNIHILA.TOS and the DATA folder in $OUT to the TT (for example to C:\\ANNIHILA) and run ANNIHILA.TOS."
+du -sh "$OUT/DATA"

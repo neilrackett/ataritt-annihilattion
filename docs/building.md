@@ -41,17 +41,19 @@ game data is read out of the installer.
    `tmp/ta-demo/data` (`tools/pe_resource.py`, `tools/hpi_extract.py`),
    the first time only.
 2. The demo's data is converted for the TT (`tools/convert.py`, about a
-   minute) into `dist`, with pictures of the converted art in
+   minute) into `dist/DATA`, with pictures of the converted art in
    `build/previews`. It is converted again whenever the converter changes.
-3. `ANNIHILA.TOS` is compiled (`Makefile`, `src/`) through `stcmd` into the
-   same folder, its objects in `build`. `dist` then holds only what the TT
-   needs.
+3. `ANNIHILA.TOS` is compiled (`Makefile`, `src/`) through `stcmd` into
+   `dist`, beside `DATA`, its objects in `build`. `dist` then holds only
+   what the TT needs.
 
 `dist` and `tmp/` are ignored by Git: they hold the game's data, which is
 Cavedog's.
 
-Copy the files in `dist` (about 7 MB) to a folder on the TT's hard disk,
-for example `C:\ANNIHILA`, and run `ANNIHILA.TOS` from it.
+Copy `ANNIHILA.TOS` and the `DATA` folder in `dist` (about 7 MB) to a
+folder on the TT's hard disk, for example `C:\ANNIHILA`, and run
+`ANNIHILA.TOS` from it. It reads its data from `DATA`, and keeps your
+progress there.
 
 ## The full game
 
@@ -70,14 +72,14 @@ pass their paths:
    discs' own archives over it, the first disc's audio tracks (the music,
    which needs the CUE sheet) and its films.
 2. The full game's data is converted (`tools/convert.py`, about half an
-   hour) into `dist/full`, with pictures of the converted art in
+   hour) into `dist/full/DATA`, with pictures of the converted art in
    `build/previews-full`: both campaigns' 50 missions, the 24 multiplayer
    maps that fit the TT for skirmishes, a palette and the units' sprites for
    each of its 9 worlds, the music and the films.
-3. `ANNIHILA.TOS` is compiled and copied into `dist/full`.
+3. `ANNIHILA.TOS` is compiled and copied into `dist/full`, beside `DATA`.
 
-Copy the files in `dist/full` (about 300 MB) to a folder on the TT's hard
-disk and run `ANNIHILA.TOS` from it. `DATA=dist/full tools/play_hatari.sh`
+Copy `ANNIHILA.TOS` and the `DATA` folder in `dist/full` (about 300 MB) to
+a folder on the TT's hard disk and run `ANNIHILA.TOS` from it. `DATA=dist/full tools/play_hatari.sh`
 plays it in Hatari.
 
 Each push to `main` also builds `ANNIHILA.TOS` on GitHub and puts it on the
@@ -95,7 +97,7 @@ browser, in about two minutes, and nothing is uploaded.
 
 It lives in `web/` (Vite and TypeScript, with pnpm). `pnpm install` then
 `pnpm run dev` serves it locally; `pnpm test` converts the installer in
-`tmp/ta-demo` through Pyodide in Node and checks the result against `dist`,
+`tmp/ta-demo` through Pyodide in Node and checks the result against `dist/DATA`,
 skipping that when either is missing. Each push to `main` that changes
 `web/` or the converter publishes it to the `gh-pages` branch
 (`.github/workflows/pages.yml`), which GitHub Pages serves.

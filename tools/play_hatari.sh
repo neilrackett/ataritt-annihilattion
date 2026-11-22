@@ -8,7 +8,7 @@
 # (hatari_tt.sh; MACHINE=falcon for the Falcon experiment), with
 # dist as drive C: and ANNIHILA.TOS started.
 #
-# Environment: as hatari_tt.sh, and DATA, another folder of data to play
+# Environment: as hatari_tt.sh, and DATA, another game's folder to play
 # instead, such as dist/full (the full game): its ANNIHILA.TOS is the
 # newest build's.
 set -eu

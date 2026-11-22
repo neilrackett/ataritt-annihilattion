@@ -57,7 +57,7 @@ int film_play(int n, int (*skip)(int shown)) {
     int frames, k = 0;
     uint32_t t0;
     sprintf(name, "FILM%d.DAT", n);
-    fh = Fopen(name, 0);
+    fh = data_open(name);
     if (fh < 0)
         return -1;
     buf = tt_alloc_any(FRAME_MAX);

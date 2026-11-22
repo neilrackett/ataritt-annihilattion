@@ -24,7 +24,8 @@ rules and the lessons that the docs don't: read the docs for what things are.
   data, not a test fixture. `dist/`, `build/` and `tmp/` are ignored for
   this reason.
 - **Folders**: build artifacts in `build/`; only what the TT needs in `dist/`
-  (`ANNIHILA.TOS` and the demo's data) and `dist/full` (the full game's);
+  (`ANNIHILA.TOS`, and the demo's data in `dist/DATA`) and `dist/full` (the
+  full game's, its data in `dist/full/DATA`);
   the demo, the CDs' images and what they unpack to, test runs and TOS
   images in `tmp/` (`tmp/ta-demo`, `tmp/disks`, `tmp/ta-full`, `tmp/runs`,
   `tmp/tos`). Nothing points at other checkouts on Neil's computer.
@@ -196,7 +197,7 @@ stage's share; `fps1`, `fps3`, `scroll` and `battle` are the ones to watch.
     that no platform's summation order can change a byte.
 - `cd web && pnpm test` converts `tmp/ta-demo/Total Annihilation.exe`
   through Pyodide in Node, about two minutes, and checks every file against
-  `dist/`. It skips itself without the installer, as on GitHub's runners.
+  `dist/DATA`. It skips itself without the installer, as on GitHub's runners.
   Run it after any change to `tools/*.py`. The web converter does the demo
   only; the full game's CDs and films are `build.sh --full`'s.
 - TA's data has its typos: numbers such as `3.6.`, a script moving a unit

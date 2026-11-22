@@ -3,7 +3,7 @@
 
 import './main.css';
 import { checkInstaller, type OutFile } from './core/convert';
-import { FOLDER, buildZip } from './core/zip';
+import { DATA, FOLDER, buildZip } from './core/zip';
 import type { ConvertRequest, ConvertResponse } from './worker';
 
 type StepState = 'waiting' | 'working' | 'done' | 'failed';
@@ -186,15 +186,17 @@ async function saveToFolder(): Promise<void> {
 		const picked = await (window as unknown as {
 			showDirectoryPicker(options?: { mode?: string }): Promise<FileSystemDirectoryHandle>;
 		}).showDirectoryPicker({ mode: 'readwrite' });
+		const data = await picked.getDirectoryHandle(DATA, { create: true });
 		for (const file of files) {
-			const handle = await picked.getFileHandle(file.name, { create: true });
+			const handle = await data.getFileHandle(file.name, { create: true });
 			const stream = await handle.createWritable();
 			await stream.write(file.bytes as BufferSource);
 			await stream.close();
 		}
 		messages.innerHTML =
-			`<p><strong>${files.length} files written to the folder you chose.</strong></p>` +
-			'<p>Put <code>ANNIHILA.TOS</code> in the same folder, copy it to your TT\'s hard disk and run it.</p>';
+			`<p><strong>${files.length} files written to a <code>${DATA}</code> folder in the folder you chose.</strong></p>` +
+			`<p>Put <code>ANNIHILA.TOS</code> in the folder you chose, beside <code>${DATA}</code>, copy it to ` +
+			'your TT\'s hard disk and run <code>ANNIHILA.TOS</code>.</p>';
 	} catch (e) {
 		const err = e as Error;
 		if (err.name !== 'AbortError') {
@@ -248,8 +250,8 @@ function render(): void {
 		const kb = Math.round(files.reduce((n, f) => n + f.bytes.length, 0) / 1024);
 		messages.innerHTML =
 			`<p><strong>${files.length} files, ${kb.toLocaleString()}KB, in ${FOLDER}-DATA.zip.</strong></p>` +
-			`<p>Unzip it, put <code>ANNIHILA.TOS</code> in the <code>${FOLDER}</code> folder with them, copy ` +
-			'the folder to your TT\'s hard disk and run <code>ANNIHILA.TOS</code>.</p>' +
+			`<p>Unzip it, put <code>ANNIHILA.TOS</code> in the <code>${FOLDER}</code> folder, beside ` +
+			`<code>${DATA}</code>, copy the folder to your TT's hard disk and run <code>ANNIHILA.TOS</code>.</p>` +
 			'<p><button type="button" id="again" class="link">Download the zip again</button></p>';
 		el<HTMLButtonElement>('again').addEventListener('click', download);
 	} else if (busy) {

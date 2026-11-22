@@ -49,5 +49,5 @@ The scripts in `tests/` cover:
 - speed (`fps1.txt`, `fps3.txt`, `scroll.txt`)
 
 The web converter has its own test: `pnpm test` in `web/` converts the
-installer through Pyodide and checks every file against `dist`
+installer through Pyodide and checks every file against `dist/DATA`
 ([building](building.md#or-in-a-browser)).

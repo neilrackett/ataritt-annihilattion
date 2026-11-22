@@ -36,7 +36,8 @@ convert it yourself. The easiest way is in your browser:
 1. Download **Total Annihilation.exe**, the demo's installer, from the
    [Internet Archive](https://archive.org/details/TotalAnnihilation_201405)
 1. Drop it on the [data converter](https://labs.neilrackett.com/ataritt-annihilattion/),
-   which gives you an `ANNIHILA` folder of the converted data
+   which gives you an `ANNIHILA` folder with the converted data in its
+   `DATA` folder
 1. Download `ANNIHILA.TOS` from [neilrackett.com](https://neilrackett.com/atarist/ataritt-annihilattion)
    and put it in that folder
 1. Copy the folder to your TT's hard disk and run `ANNIHILA.TOS`
@@ -47,8 +48,8 @@ Or build it all on a Mac or Linux:
    [Internet Archive](https://archive.org/details/TotalAnnihilation_201405)
    and put it in `tmp/ta-demo/`
 1. Run `./build.sh` (see [Building](docs/building.md))
-1. Copy the files in `dist` to a folder on your TT's hard disk and run
-   `ANNIHILA.TOS`
+1. Copy `ANNIHILA.TOS` and the `DATA` folder in `dist` to a folder on
+   your TT's hard disk and run `ANNIHILA.TOS`
 
 To try it first, `make play` plays it in [Hatari](https://www.hatari-emu.org).
 
@@ -82,7 +83,7 @@ See [Playing](docs/playing.md) for the rest.
    `python3` with numpy and Pillow
 1. Open the command line and navigate to the project directory
 1. Run `./build.sh` to unpack and convert the demo's data and compile the game
-1. Files will be created in the `dist` folder
+1. `ANNIHILA.TOS` and its `DATA` folder will be created in `dist`
 
 `stcmd make` compiles the program alone, into `dist/ANNIHILA.TOS`.
 

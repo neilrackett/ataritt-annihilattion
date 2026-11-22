@@ -6,7 +6,7 @@
 /*
  * AnnihilaTTion: the Total Annihilation demo's three Arm missions in TT
  * medium resolution. The title menu, the briefings, and the scripted test
- * driver (OATEST.TXT beside the data) that automated checks use.
+ * driver (OATEST.TXT beside the program) that automated checks use.
  */
 #include <string.h>
 #include <stdio.h>
@@ -251,6 +251,8 @@ static int test_next(void) {
     return -1;
 }
 
+/* Reads the test script, OATEST.TXT, and starts its log, OALOG.TXT, both
+ * beside the program: before load_common() moves on to the data's folder */
 static int load_test(void) {
     char line[128];
     test_text = load_text("OATEST.TXT");

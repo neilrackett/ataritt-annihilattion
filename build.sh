@@ -5,7 +5,7 @@
 # build.sh [INSTALLER]
 #
 # Builds AnnihilaTTion into dist, the folder to copy to the TT: ANNIHILA.TOS
-# and the converted game data.
+# and, in its DATA folder, the converted game data.
 #
 #   1. Unpacks the Total Annihilation demo (1997) installer, "Total
 #      Annihilation.exe", into tmp/ta-demo/data, if that is not done yet:
@@ -39,9 +39,10 @@ if [ ! -d "$DEMO/data/maps" ]; then
   python3 "$HERE/tools/hpi_extract.py" "$DEMO/TADemo.hpi" "$DEMO/data"
 fi
 
-if [ ! -f "$OUT/MISS3.DAT" ] || [ -n "$(find "$HERE/tools" -name '*.py' -newer "$OUT/MISS3.DAT")" ]; then
+if [ ! -f "$OUT/DATA/MISS3.DAT" ] || [ -n "$(find "$HERE/tools" -name '*.py' -newer "$OUT/DATA/MISS3.DAT")" ]; then
   echo "Converting the demo's data (about a minute)..."
-  python3 "$HERE/tools/convert.py" "$DEMO/data" "$OUT" "$REPO/build/previews"
+  mkdir -p "$OUT/DATA"
+  python3 "$HERE/tools/convert.py" "$DEMO/data" "$OUT/DATA" "$REPO/build/previews"
 fi
 
 cd "$HERE"
@@ -51,5 +52,5 @@ else
   STCMD_NO_TTY=1 STCMD_QUIET=1 stcmd make
 fi
 echo
-echo "Done: copy the files in $OUT to the TT (for example to C:\\ANNIHILA) and run ANNIHILA.TOS."
-du -sh "$OUT"
+echo "Done: copy ANNIHILA.TOS and the DATA folder in $OUT to the TT (for example to C:\\ANNIHILA) and run ANNIHILA.TOS."
+du -sh "$OUT/DATA"

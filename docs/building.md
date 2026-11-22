@@ -38,17 +38,18 @@ game data is read out of the installer.
    `tmp/ta-demo/data` (`tools/pe_resource.py`, `tools/hpi_extract.py`),
    the first time only.
 2. The demo's data is converted for the TT (`tools/convert.py`, about a
-   minute) into `dist`, with pictures of the converted art in
+   minute) into `dist/DATA`, with pictures of the converted art in
    `build/previews`. It is converted again whenever the converter changes.
-3. `ANNIHILA.TOS` is compiled (`Makefile`, `src/`) through `stcmd` into the
-   same folder, its objects in `build`. `dist` then holds only what the TT
-   needs.
+3. `ANNIHILA.TOS` is compiled (`Makefile`, `src/`) through `stcmd` into
+   `dist`, beside `DATA`, its objects in `build`. `dist` then holds only
+   what the TT needs.
 
 `dist` and `tmp/` are ignored by Git: they hold the demo's data, which is
 Cavedog's.
 
-Copy the files in `dist` (about 7 MB) to a folder on the TT's hard disk,
-for example `C:\ANNIHILA`, and run `ANNIHILA.TOS` from it.
+Copy `ANNIHILA.TOS` and the `DATA` folder in `dist` (about 7 MB) to a
+folder on the TT's hard disk, for example `C:\ANNIHILA`, and run
+`ANNIHILA.TOS` from it. It reads its data from `DATA`.
 
 Each push to `main` also builds `ANNIHILA.TOS` on GitHub and puts it on the
 [latest release](https://github.com/neilrackett/ataritt-annihilattion/releases/tag/latest)
@@ -65,7 +66,7 @@ browser, in about two minutes, and nothing is uploaded.
 
 It lives in `web/` (Vite and TypeScript, with pnpm). `pnpm install` then
 `pnpm run dev` serves it locally; `pnpm test` converts the installer in
-`tmp/ta-demo` through Pyodide in Node and checks the result against `dist`,
+`tmp/ta-demo` through Pyodide in Node and checks the result against `dist/DATA`,
 skipping that when either is missing. Each push to `main` that changes
 `web/` or the converter publishes it to the `gh-pages` branch
 (`.github/workflows/pages.yml`), which GitHub Pages serves.

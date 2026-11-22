@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // The web converter against build.sh: run in Node, through the same Pyodide
-// the page uses, its files must be byte for byte the ones in ../dist. It
+// the page uses, its files must be byte for byte the ones in ../dist/DATA. It
 // needs the demo's installer in ../tmp/ta-demo and a dist built from it by
 // build.sh, and skips itself when either is missing, which on GitHub's
 // runners they always are: no game data goes near this repository.
@@ -15,7 +15,7 @@ import { PYODIDE_VERSION, SCRIPTS, checkInstaller, convert, type Stage } from '.
 
 const REPO = join(import.meta.dirname, '..', '..');
 const INSTALLER = join(REPO, 'tmp', 'ta-demo', 'Total Annihilation.exe');
-const DIST = join(REPO, 'dist');
+const DIST = join(REPO, 'dist', 'DATA');
 const have = existsSync(INSTALLER) && existsSync(join(DIST, 'MISS3.DAT'));
 
 describe('checkInstaller', () => {
@@ -40,8 +40,8 @@ describe.skipIf(!have)('convert', () => {
 		console.log(`converted in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
 
 		expect(stages).toEqual(['unpacking', 'converting']);
-		// every file build.sh makes but the program, and no others
-		const expected = readdirSync(DIST).filter((n) => n !== 'ANNIHILA.TOS').sort();
+		// every file build.sh makes, and no others
+		const expected = readdirSync(DIST).sort();
 		expect(files.map((f) => f.name)).toEqual(expected);
 		for (const file of files) {
 			const want = readFileSync(join(DIST, file.name));

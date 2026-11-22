@@ -239,16 +239,18 @@ extern Common common;
 extern Sounds sounds;
 extern Mission mission;
 
-/* The files are read from the current folder. A load that fails leaves its
- * reason for data_error(). */
+/* The files are read from the DATA folder beside the program, from
+ * load_common() on; before it, from the program's own folder. A load that
+ * fails leaves its reason for data_error(). */
 
 /// Loads UNITS.DAT: the weapons, the unit types and their sprites.
 ///
 /// @return 1 when loaded, 0 when not
 int load_units(void);
 
-/// Loads COMMON.DAT: the battle palette, the panels, features, effects,
-/// cursors, unit pictures, buttons, titles and font.
+/// Loads COMMON.DAT, moving on to the data's folder: the battle palette, the
+/// panels, features, effects, cursors, unit pictures, buttons, titles and
+/// font.
 ///
 /// @return 1 when loaded, 0 when not
 int load_common(void);

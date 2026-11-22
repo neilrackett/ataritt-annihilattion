@@ -27,6 +27,17 @@ _Static_assert(sizeof(PlacedUnit) == 14, "PlacedUnit must match MISSn.DAT");
 
 static char err[160];
 
+/* The data's folder, DATA beside the program, from load_common() on: the
+ * test script, read before it, lies beside the program */
+static char dir[6];
+
+/* A data file's name with its folder */
+static const char* path(const char* name) {
+    static char buf[32];
+    sprintf(buf, "%s%s", dir, name);
+    return buf;
+}
+
 const char* data_error(void) {
     return err;
 }
@@ -36,9 +47,9 @@ const char* data_error(void) {
 static uint8_t* load_file(const char* name, int32_t* len, int st, int twice) {
     long fh, size, room;
     uint8_t* buf;
-    fh = Fopen(name, 0);
+    fh = Fopen(path(name), 0);
     if (fh < 0) {
-        sprintf(err, "can't find %s", name);
+        sprintf(err, "can't find %s", path(name));
         return 0;
     }
     size = Fseek(0, (short)fh, 2);
@@ -101,10 +112,12 @@ int load_units(void) {
 }
 
 int load_common(void) {
-    uint8_t* f = load_file("COMMON.DAT", 0, 0, 0);
+    uint8_t* f;
     const uint8_t* p;
     int i, j, ncur, npic, nbtn, ntit;
     uint32_t panel, font, fog;
+    strcpy(dir, "DATA\\");
+    f = load_file("COMMON.DAT", 0, 0, 0);
     if (!f)
         return 0;
     if (memcmp(f, "OAC2", 4)) {
@@ -306,7 +319,7 @@ void mission_name(int n, char* name) {
     long fh;
     sprintf(file, "MISS%d.DAT", n);
     name[0] = 0;
-    fh = Fopen(file, 0);
+    fh = Fopen(path(file), 0);
     if (fh < 0)
         return;
     if (Fseek(4, (short)fh, 0) == 4 && Fread((short)fh, 40, name) == 40)

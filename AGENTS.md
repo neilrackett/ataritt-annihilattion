@@ -22,7 +22,7 @@ rules and the lessons that the docs don't: read the docs for what things are.
   data, not a test fixture. `dist/`, `build/` and `tmp/` are ignored for
   this reason.
 - **Folders**: build artifacts in `build/`; only what the TT needs in `dist/`
-  (`ANNIHILA.TOS` and the data); the demo, test runs and TOS images in
+  (`ANNIHILA.TOS`, and the data in `dist/DATA`); the demo, test runs and TOS images in
   `tmp/` (`tmp/ta-demo`, `tmp/runs`, `tmp/tos`). Nothing points at other
   checkouts on Neil's computer.
 - **The TT comes first**, in code and docs. The Falcon is an experiment and a
@@ -52,7 +52,7 @@ gcc 13 `m68k-atari-mintelf` with mintlib, through `stcmd`
 ([atarist-toolkit-docker](https://github.com/neilrackett/atarist-toolkit-docker)).
 Keep the build free of warnings. The converter needs `python3` with numpy and
 Pillow. `build.sh` converts again whenever a `tools/*.py` is newer than
-`dist/MISS3.DAT`; conversion takes about a minute.
+`dist/DATA/MISS3.DAT`; conversion takes about a minute.
 
 ## Test
 
@@ -151,7 +151,7 @@ stage's share; `fps1`, `fps3`, `scroll` and `battle` are the ones to watch.
     that no platform's summation order can change a byte.
 - `cd web && pnpm test` converts `tmp/ta-demo/Total Annihilation.exe`
   through Pyodide in Node, about two minutes, and checks every file against
-  `dist/`. It skips itself without the installer, as on GitHub's runners.
+  `dist/DATA`. It skips itself without the installer, as on GitHub's runners.
   Run it after any change to `tools/*.py`.
 
 ## The web converter

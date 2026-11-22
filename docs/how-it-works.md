@@ -6,8 +6,8 @@ in Python that turns the demo's data into what that engine reads.
 ## The converter
 
 `tools/convert.py` reads the demo's own formats (`tools/ta.py`: HPI archives,
-TDF/FBI/OTA text, GAF pictures, 3DO models, TNT maps) and writes, all
-big-endian for the 68030:
+TDF/FBI/OTA text, GAF pictures, 3DO models, TNT maps) and writes, into the
+`DATA` folder beside `ANNIHILA.TOS`, all big-endian for the 68030:
 
 | File | What it holds |
 | --- | --- |

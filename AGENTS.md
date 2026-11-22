@@ -130,6 +130,11 @@ stage's share; `fps1`, `fps3`, `scroll` and `battle` are the ones to watch.
 - **Per-call costs add up.** A function call, a modulo or a division per
   row or per group cost more than the work. Step pointers instead, and wrap
   ring columns with `& (RING_G - 1)`.
+- **Back to user mode with `SuperToUser()`, not `Super()`.** `tt_init()`
+  calls `Super(0L)` and `tt_exit()` returns at another stack depth. TOS's
+  and EmuTOS's `Super(ssp)` puts the user stack back where `Super(0L)` left
+  it, so the return address was lost: EmuTOS's Falcon panicked on every
+  quit. mintlib's `SuperToUser()` keeps the stack pointer across the trap.
 
 ## The converter: rules
 

@@ -369,7 +369,10 @@ void tt_exit(void) {
     else
         tt_medium_stop();
     __asm__ __volatile__("movec %0,%%cacr" ::"d"(old_cacr | 0x0808UL));
-    (void)Super((void*)old_ssp);
+    /* not Super(): on EmuTOS (and TOS), that leaves the user stack where
+     * tt_init()'s Super(0L) was, not where this is, and the return address
+     * is lost */
+    SuperToUser((void*)old_ssp);
     while (Cconis())
         (void)Cnecin();
 }

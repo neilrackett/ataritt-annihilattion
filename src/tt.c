@@ -27,7 +27,16 @@
 #define XB_DST (*(volatile uint16_t*)0xFFFF8932UL)
 #define XB_EXTPRE (*(volatile uint8_t*)0xFFFF8934UL)
 #define XB_INTPRE (*(volatile uint8_t*)0xFFFF8935UL)
-#define FALCON_MODE (VGA | COL80 | BPS4) /* 640x480 in 16 colours, 4 planes */
+/* 640x480 in 16 colours, 4 planes: on VGA the Falcon's own mode; on RGB or
+ * a TV, 640x400 interlaced made 480 lines tall */
+#define FALCON_VGA_MODE (VGA | COL80 | BPS4)
+#define FALCON_RGB_MODE (COL80 | BPS4 | VERTFLAG)
+/* Where the VIDEL's vertical blank begins and ends, and its picture's first
+ * line and the line after its last: in lines, while it interlaces */
+#define VIDEL_VBB (*(volatile uint16_t*)0xFFFF82A4UL)
+#define VIDEL_VBE (*(volatile uint16_t*)0xFFFF82A6UL)
+#define VIDEL_VDB (*(volatile uint16_t*)0xFFFF82A8UL)
+#define VIDEL_VDE (*(volatile uint16_t*)0xFFFF82AAUL)
 /* The megabytes a Falcon must have free in one block at start: the three
  * screens, the data and mission 3, as measured, with room to spare */
 #define FALCON_MEGABYTES 6
@@ -186,12 +195,30 @@ static uint32_t falcon_colour(uint16_t c) {
     return r << 24 | g << 16 | b;
 }
 
+/* On RGB or a TV, the 640x400 interlaced picture made 480 lines tall: 40
+ * more lines at each end, as the Falcon's overscan modes have. NTSC has too
+ * few lines below the picture for 40 more, and there it moves up into the
+ * lines above instead. */
+static void falcon_tall(void) {
+    int vdb = (VIDEL_VDB & 0x7FF) - 40, vde = (VIDEL_VDE & 0x7FF) + 40;
+    int vbb = VIDEL_VBB & 0x7FF, vbe = VIDEL_VBE & 0x7FF;
+    if (vde > vbb) {
+        vdb -= vde - vbb;
+        vde = vbb;
+    }
+    if (vdb < vbe)
+        return; /* a mode set some other way, with no room: left at 400 */
+    VIDEL_VDB = (uint16_t)vdb;
+    VIDEL_VDE = (uint16_t)vde;
+}
+
 /* The same picture as a TT's: what the Falcon had saved, then 640x480 in 16
  * colours set through the XBIOS and DMA sound connected to the DAC at the
  * STE's rates; the caches on without burst fill, which a Falcon's memory
- * does not do */
+ * does not do. A PAL or an NTSC RGB monitor or TV gets what the desktop
+ * has, as one made for one may not sync to the other. */
 static void falcon_start(void) {
-    int i;
+    int i, rgb = VgetMonitor() != MON_VGA;
     falcon_had.mode = VsetMode(-1);
     falcon_had.log = Logbase();
     falcon_had.phys = Physbase();
@@ -205,8 +232,12 @@ static void falcon_start(void) {
     (void)Devconnect(DMAPLAY, DAC, CLK25M, CLKOLD, NO_SHAKE);
     (void)Soundcmd(ADDERIN, (short)((falcon_had.adder & 3) | MATIN));
     __asm__ __volatile__("move.l #0x3111,%%d0\n\tmovec %%d0,%%cacr" ::: "d0");
-    (void)VsetScreen(tt_front, tt_front, 3, FALCON_MODE);
+    (void)VsetScreen(
+        tt_front, tt_front, 3, rgb ? FALCON_RGB_MODE | (falcon_had.mode & PAL) : FALCON_VGA_MODE
+    );
     tt_wait_vbl();
+    if (rgb)
+        falcon_tall();
     for (i = 0; i < 16; i++)
         FALCON_PALETTE[i] = 0;
 }
@@ -288,8 +319,8 @@ static const char* missing(long video) {
         return 0;
     if (video != 3)
         return "needs a TT or a Falcon";
-    if (VgetMonitor() != MON_VGA)
-        return "needs a VGA monitor on a Falcon";
+    if (VgetMonitor() == MON_MONO)
+        return "needs a colour monitor on a Falcon";
     if ((long)Mxalloc(-1, 0) < (long)FALCON_MEGABYTES << 20)
         return "needs " STR(FALCON_MEGABYTES) "MB free RAM on a Falcon";
     return 0;

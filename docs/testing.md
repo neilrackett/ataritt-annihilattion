@@ -7,7 +7,8 @@ headless in Hatari as the target TT (with the TOS image in `tmp/tos`, or
 `OATEST.TXT`. The run's folder is `tmp/runs/SCRIPT` (or `NAME`): the
 program's log is `OALOG.TXT` there, and every shot the script took is a PNG.
 
-- `MACHINE=falcon` runs it as a [Falcon](falcon.md).
+- `MACHINE=falcon` runs it as a [Falcon](falcon.md), and with it
+  `MONITOR=rgb` or `MONITOR=tv` on an RGB monitor or a TV instead of VGA.
 - `PRG` names another program to run, to compare two builds.
 - `PROF=1` also writes Hatari's profile, which `tools/profsum.py` sums per
   function.

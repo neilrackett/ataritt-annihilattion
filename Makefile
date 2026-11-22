@@ -27,7 +27,8 @@ clean:
 
 # In Hatari, run on the host rather than through stcmd: each builds first
 # with build.sh, which compiles through stcmd itself and brings dist up to date.
-# MACHINE=falcon runs either on a Falcon, as tools/hatari_tt.sh says.
+# MACHINE=falcon runs either on a Falcon, and MONITOR=rgb or tv puts it on an
+# RGB monitor or a TV, as tools/hatari_tt.sh says.
 #   make play                        the game in a Hatari window
 #   make test TEST=tests/win2.txt    a test script headless; NAME names the run
 TEST ?= tests/smoke1.txt

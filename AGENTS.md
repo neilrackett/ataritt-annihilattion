@@ -58,8 +58,9 @@ Pillow. `build.sh` converts again whenever a `tools/*.py` is newer than
 
 `tools/test_hatari.sh NAME SCRIPT [SECONDS]` runs a script headless; the log is
 `tmp/runs/NAME/OALOG.TXT`, which ends in `result N` for a mission.
-`MACHINE=falcon` runs the Falcon, `PRG=` another build, `PROF=1` writes a
-profile for `tools/profsum.py`.
+`MACHINE=falcon` runs the Falcon (`MONITOR=rgb` or `tv` for its RGB
+mode), `PRG=` another build, `PROF=1` writes a profile for
+`tools/profsum.py`.
 
 What each script should end with, on the TT and the Falcon alike:
 `m1_gate`, `win2` and `win3` win (`result 1`); `long2` and `m2_attack` lose

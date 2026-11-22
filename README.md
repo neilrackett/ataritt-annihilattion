@@ -72,8 +72,8 @@ See [Playing](docs/playing.md) for the rest.
 - Atari TT030 with TOS 3.06, 2MB ST-RAM and 4MB TT-RAM
 - A colour monitor for TT medium resolution
 - About 7MB of hard disk space
-- Experimental: a Falcon030 with a VGA monitor and 6MB free RAM (see
-  [On a Falcon](docs/falcon.md))
+- Experimental: a Falcon030 with a VGA monitor, an RGB monitor or a TV,
+  and 6MB free RAM (see [On a Falcon](docs/falcon.md))
 
 ## Build
 

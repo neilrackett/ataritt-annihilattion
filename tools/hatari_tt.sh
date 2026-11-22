@@ -9,7 +9,8 @@
 # caches. With MACHINE=falcon they are a 14 MB Falcon's on a VGA monitor
 # instead, running EmuTOS: the Falcon is an experiment (see the README).
 #
-# Environment: MACHINE (tt, the default, or falcon), TOS (default:
+# Environment: MACHINE (tt, the default, or falcon), MONITOR (vga, the
+# default, or for a Falcon rgb or tv), TOS (default:
 # "tmp/tos/TOS 3.06 - UK.img"; for a Falcon, "tmp/tos/EmuTOS 1.4 - UK -
 # 512K.img"), HATARI (default: hatari on the PATH, else the Mac app).
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -24,5 +25,5 @@ else
   MACHINE_FLAGS=(--machine tt --memsize 2 --ttram 4 --addr24 off)
 fi
 [ -f "$TOS" ] || { echo "No TOS image at $TOS: set TOS to one (docs/building.md)." >&2; exit 1; }
-HATARI_FLAGS=(--tos "$TOS" "${MACHINE_FLAGS[@]}" --mmu off --monitor vga --cpu-exact on
+HATARI_FLAGS=(--tos "$TOS" "${MACHINE_FLAGS[@]}" --mmu off --monitor "${MONITOR:-vga}" --cpu-exact on
   --data-cache on --fast-boot on --confirm-quit false)

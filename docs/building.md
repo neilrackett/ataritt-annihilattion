@@ -80,7 +80,8 @@ skipping that when either is missing. Each push to `main` that changes
 | `make test TEST=tests/win2.txt` | builds, then runs one test script headless ([testing](testing.md)) |
 
 `make play` and `make test` run on the computer itself, not through `stcmd`,
-as Hatari does; `MACHINE=falcon` runs either as a [Falcon](falcon.md).
+as Hatari does; `MACHINE=falcon` runs either as a [Falcon](falcon.md), and
+`MONITOR=rgb` or `MONITOR=tv` puts that Falcon on an RGB monitor or a TV.
 Hatari needs a TOS image in `tmp/tos`, which Git ignores:
 
 | Machine | Image | Where from |

@@ -409,12 +409,7 @@ static int title_screen(uint8_t* pic, const uint16_t* pal) {
                 strcpy(s, labels[i]);
             draw_slot(tt_back, &title_slots[i], s, hover == i, 0);
         }
-        text_centre(
-            tt_back,
-            462,
-            "AnnihilaTTion: the Total Annihilation demo on the Atari TT, by Neil Rackett",
-            C_GREY
-        );
+        text_centre(tt_back, 462, "AnnihilaTTion - neilrackett.com/atarist", C_GREY);
         draw_arrow(tt_back, x, y);
         tt_flip();
         if ((k & 0xFF) == 13 || (k & 0xFF) == ' ')

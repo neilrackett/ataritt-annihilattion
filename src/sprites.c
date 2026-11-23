@@ -181,7 +181,7 @@ static void* take(int32_t n) {
 }
 
 static int read_at(uint32_t ofs, int32_t n, void* dst) {
-    return Fseek((long)ofs, (short)fh, 0) == (long)ofs && Fread((short)fh, n, dst) == n;
+    return Fseek((long)ofs, (short)fh, 0) == (long)ofs && data_read(fh, n, dst) == n;
 }
 
 int spr_load(int type) {

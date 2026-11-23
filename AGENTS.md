@@ -171,6 +171,25 @@ stage's share; `fps1`, `fps3`, `scroll` and `battle` are the ones to watch.
   the upkeep counted, solar collectors made nothing.
 - **The computer builds bases in skirmishes only** (`computer_base()`), so
   the campaigns, the demo's included, play as their scripts say.
+- **Read into TT-RAM with `data_read()`.** The disk's DMA reaches only
+  ST-RAM, so the driver copies what is bound for TT-RAM itself, as fast as
+  that driver does. On Neil's TT a read into ST-RAM takes 1.2 s a megabyte.
+  Reading 8 KB at a time into a buffer in ST-RAM and copying it adds 0.4 s.
+  GemDrive (Neil's driver is in `../acsi2stm`) adds about 0.35 s with
+  `GEMDRIVE.PRG` from his release of 23 November 2026, but more than the
+  buffer from its boot sector or with older firmware. So `data_read()`
+  takes turns, 512 KB each way, and then keeps to the faster one: use it
+  for every read into TT-RAM. GemDrive before that release also read more
+  slowly the further into a file it was, so compare figures from the same
+  firmware. Hatari reads in no time at all, so only the TT shows any of
+  this; the `disk` test command measures it there, and logs which way
+  `data_read()` chose.
+- **The films' budget.** At those speeds a TT reads and draws about 30 KB of
+  film in a frame's time. The converter gives each frame 26 KB, lets quiet
+  frames save up to 2 MB for busy ones, and leaves out a frame that would
+  overdraw it (`FILM_FRAME_BYTES`, `FILM_BANK`). The player reads
+  `FILM_LEAD`, 1 MB, before the first frame: keep it in step with
+  `tools/convert.py`. Leaving out groups instead of frames tore the picture.
 - **Sound is mixed**, not played: DMA sound loops a short ring that
   `snd_update()` fills a little ahead of it, every frame, menus included.
   It silences what has played, so a short wait without it (a disk read) is
@@ -243,6 +262,7 @@ cut the briefing in a pause in the narration.
 
 ## On the real TT
 
-Untested there so far. If `ANNIHILA.TOS` hangs at a blank screen, ask about
-the AUTO folder and GemDrive first: that combination, not the toolchain,
-hung earlier builds on Neil's TT.
+The demo plays on Neil's TT, and so does the full game's first mission; the
+rest of the full game has been tried in Hatari only. If `ANNIHILA.TOS` hangs
+at a blank screen, ask about the AUTO folder and GemDrive first: that
+combination, not the toolchain, hung earlier builds on Neil's TT.

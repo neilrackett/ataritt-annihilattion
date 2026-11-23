@@ -49,7 +49,10 @@ archives the installer would copy, the CD's audio tracks as WAV, and the
 films. The films are Smacker; ffmpeg decodes them, where there is one, and
 the converter keeps every other frame at 320x240, in TT low resolution's 256
 colours, writing only the 16-pixel groups whose colours change noticeably.
-Without ffmpeg the films are left out.
+It also keeps each film within what a TT can read as it plays: where a
+frame would take more than its budget, it leaves the frame out and the next
+one shows the change. Only the splash film needs this, in its two busiest
+stretches. Without ffmpeg the films are left out.
 
 ## The engine
 
@@ -100,6 +103,14 @@ Sound goes through a mixer: DMA sound plays a short ring in ST-RAM over and
 over, and each frame the mixer fills the part it has played with four
 channels of effects and a stream, the narration or music, read from the
 disk in 8 KB pieces as it plays.
+
+The disk's DMA reaches only ST-RAM, so a driver copies what is bound for
+TT-RAM itself, some faster than reading into a small buffer in ST-RAM and
+copying, some more slowly. The first reads into TT-RAM go each way in turn,
+and the rest the way that was faster (`data_read()`). A film reads its first
+megabyte before it starts, then reads ahead into a ring of up to 3 MB while
+it waits for each frame's time, so that its quieter stretches pay for its
+busier ones.
 
 ## Tools
 

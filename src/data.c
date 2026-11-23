@@ -60,6 +60,49 @@ long data_create(const char* name) {
     return Fcreate(path(name), 0);
 }
 
+#define BOUNCE 8192L                 /* read through ST-RAM at a time */
+#define TT_RAM 0x01000000UL          /* where TT-RAM starts */
+#define TRIAL (512 * 1024L)          /* read each way into TT-RAM before choosing */
+
+static int straight = -1;            /* into TT-RAM: 1 straight, 0 through ST-RAM, -1 trying both */
+static long tried[2], took[2];       /* the trial's bytes and 200 Hz ticks, through ST-RAM and straight */
+
+long data_read(long fh, long n, void* dst) {
+    static uint8_t* bounce;
+    static int turn;
+    uint8_t* d = dst;
+    long got = 0;
+    if ((uint32_t)d < TT_RAM || straight == 1 || (!bounce && !(bounce = tt_alloc_st(BOUNCE))))
+        return Fread((short)fh, n, d);
+    while (got < n) {
+        long want = n - got < BOUNCE ? n - got : BOUNCE, r;
+        /* while trying, a chunk each way in turn */
+        int way = straight < 0 && (turn ^= 1);
+        uint32_t t = HZ200;
+        r = Fread((short)fh, want, way ? d + got : bounce);
+        if (r <= 0)
+            return got ? got : r;
+        if (!way)
+            memcpy(d + got, bounce, r);
+        if (straight < 0) {
+            tried[way] += r;
+            took[way] += (long)(HZ200 - t);
+            if (tried[0] >= TRIAL && tried[1] >= TRIAL)
+                straight = took[1] * tried[0] < took[0] * tried[1];
+        }
+        got += r;
+        if (r < want)
+            break;
+    }
+    return got;
+}
+
+int data_read_way(long ms[2]) {
+    ms[0] = took[0] * 5;
+    ms[1] = took[1] * 5;
+    return straight;
+}
+
 /* Reads a whole file into memory from tt_alloc_any (or ST-RAM); with twice,
  * into the top half of a block twice its length, for double_samples() */
 static uint8_t* load_file(const char* name, int32_t* len, int st, int twice) {
@@ -79,7 +122,7 @@ static uint8_t* load_file(const char* name, int32_t* len, int st, int twice) {
         sprintf(err, "needs more free RAM to load %s", name);
         return 0;
     }
-    if (Fread((short)fh, size, twice ? buf + size : buf) != size) {
+    if (data_read(fh, size, twice ? buf + size : buf) != size) {
         (void)Fclose((short)fh);
         tt_free(buf);
         sprintf(err, "can't read %s", name);
@@ -239,8 +282,7 @@ int load_panel(int n, int side, uint8_t* screen) {
     (void)Fseek(0, (short)fh, 0);
     rest = size - SCREEN_BYTES;
     f = rest > 0 ? tt_alloc_any(rest + 4) : 0;
-    if (!f || Fread((short)fh, SCREEN_BYTES, screen) != SCREEN_BYTES ||
-        Fread((short)fh, rest, f) != rest) {
+    if (!f || data_read(fh, SCREEN_BYTES, screen) != SCREEN_BYTES || data_read(fh, rest, f) != rest) {
         (void)Fclose((short)fh);
         tt_free(f);
         sprintf(err, f ? "can't read %s" : "needs more free RAM to load %s", name);

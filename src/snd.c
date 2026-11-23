@@ -127,7 +127,7 @@ void snd_play(int id, int prio) {
 /* Reads more of the stream's file when its ring has room */
 static void stream_read(void) {
     while (sfh >= 0 && !s_eof && s_written - s_read <= SBUF - STREAM_READ) {
-        long got = Fread((short)sfh, STREAM_READ, sbuf + (s_written & (SBUF - 1)));
+        long got = data_read(sfh, STREAM_READ, sbuf + (s_written & (SBUF - 1)));
         if (got > 0)
             s_written += got;
         if (got < STREAM_READ)

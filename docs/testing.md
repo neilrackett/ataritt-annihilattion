@@ -44,7 +44,8 @@ difficulty plays Core.
 | `spawn TYPE X Z [1]`, `give TYPE` | puts down a unit of the player's (or with 1 the computer's), or hands the player the computer's first unit of a type, as a capture does |
 | `move UNIT X Z`, `attack UNIT TARGET`, `capture UNIT TARGET` | orders a unit to a place, or to attack or capture another |
 | `explored`, `sprites` | logs the explored map, or what the units' sprites hold |
-| `film N [FRAMES]` | plays a film, or its first frames, and logs how long it took |
+| `film N [FRAMES]` | plays a film, or its first frames, and logs how long it took, how much of that went on reading and on drawing, and how many frames came late |
+| `disk FILE` | logs how fast a data file reads, into ST-RAM, into TT-RAM and into TT-RAM as the game reads (`data_read()`), in reads of 8, 32 and 64 KB, each from the next megabyte of the file; then into ST-RAM again, to show whether the place in the file matters, how long copying a megabyte from ST-RAM to TT-RAM takes, and which way `data_read()` chose |
 | `result` | logs whether the mission is won or lost |
 | `end`, `quit` | ends the mission, or the program |
 

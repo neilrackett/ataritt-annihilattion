@@ -21,4 +21,15 @@ enum { FILM_LOGO = 1, FILM_INTRO, FILM_ARM_WINS, FILM_CORE_WINS, FILM_CREDITS };
 /// machine cannot show it
 int film_play(int n, int (*skip)(int shown));
 
+/// How the last film played, for the test log: the size of the ring it was
+/// read ahead into, the milliseconds spent reading it and putting its frames
+/// on the screen, the frames shown more than a frame's time after theirs,
+/// and the latest one's lateness
+typedef struct {
+    long ring_kb, read_ms, draw_ms, late_ms;
+    int late;
+} FilmStats;
+
+extern FilmStats film_stats;
+
 #endif

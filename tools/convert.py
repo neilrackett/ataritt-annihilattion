@@ -1334,6 +1334,14 @@ def music_tracks(out, folder):
 
 FILM_LINES, FILM_GROUPS = 240, 20     # a film's picture: 320x240, in 16-pixel groups
 FILM_SAME = 8       # a group whose colours change less than this on average stays as it is
+# A film's budget: a frame's share, a little less than a TT reads from
+# GemDrive and draws in a frame's time (the splash film asks for more); what
+# the player reads before the first frame (FILM_LEAD in film.c); and what
+# quieter frames may save for busier ones, which a TT with 4 MB of TT-RAM
+# has room to read ahead
+FILM_FRAME_BYTES = 26 * 1024
+FILM_LEAD = 1024 * 1024
+FILM_BANK = 2048 * 1024
 
 
 def film_planes(idx):
@@ -1347,8 +1355,11 @@ def write_films(out, folder):
     """FILMn.DAT: a film at 15 frames a second for TT low resolution: each
     frame its palette when it changed (256 TT colours), then a bit for each
     16-pixel group of its 320x240 picture that looks different from what is
-    shown (by FILM_SAME), then those groups. FILMn.SND: its sound. ffmpeg
-    decodes the films' Smacker; without it there are none."""
+    shown (by FILM_SAME), then those groups. A frame over its budget (by
+    FILM_FRAME_BYTES and FILM_BANK) is left out, changing nothing, and the
+    next one shows what it would have. FILMn.SND:
+    its sound. ffmpeg decodes the films' Smacker; without it there are
+    none."""
     ffmpeg = shutil.which('ffmpeg')
     if not ffmpeg:
         print('no ffmpeg: the films are left out')
@@ -1366,6 +1377,7 @@ def write_films(out, folder):
         recs = []
         prev_pal = None
         shown = np.zeros((FILM_LINES, FILM_GROUPS * 16), np.uint8)
+        bank = FILM_LEAD
         k = 0
         while True:
             b = proc.stdout.read(size)
@@ -1380,17 +1392,21 @@ def write_films(out, folder):
             tt = (rgb * 15 + 127) // 255
             pal = ((tt[:, 0] << 8) | (tt[:, 1] << 4) | tt[:, 2]).astype('>u2').tobytes()
             # what is shown, through this frame's palette, against the frame
-            diff = np.abs(rgb[idx] - rgb[shown]).reshape(FILM_LINES, FILM_GROUPS, 16 * 3).mean(axis=2)
-            changed = diff >= FILM_SAME if recs else np.ones((FILM_LINES, FILM_GROUPS), bool)
-            shown[np.repeat(changed, 16, axis=1)] = idx[np.repeat(changed, 16, axis=1)]
-            groups = film_planes(shown)
+            diff = np.abs(rgb[idx] - rgb[shown]).reshape(FILM_LINES, FILM_GROUPS, 16 * 3).sum(axis=2)
+            changed = diff >= FILM_SAME * 16 * 3 if recs else np.ones((FILM_LINES, FILM_GROUPS), bool)
             body = b''
             flags = 0
-            if pal != prev_pal:
+            bank = min(bank + FILM_FRAME_BYTES, FILM_BANK)
+            if recs and 6 + (pal != prev_pal) * len(pal) + FILM_LINES * FILM_GROUPS // 8 + changed.sum() * 16 > bank:
+                changed[:] = False      # over the budget: the frame is left out
+            elif pal != prev_pal:
                 body += pal
                 flags |= 1
                 prev_pal = pal
+            shown[np.repeat(changed, 16, axis=1)] = idx[np.repeat(changed, 16, axis=1)]
+            groups = film_planes(shown)
             body += np.packbits(changed.ravel()).tobytes() + groups[changed].tobytes()
+            bank -= 6 + len(body)
             recs.append(be('IH', len(body), flags) + body)
         proc.wait()
         data = b'OAF3' + be('HHH', len(recs), 15, FILM_LINES) + b''.join(recs)

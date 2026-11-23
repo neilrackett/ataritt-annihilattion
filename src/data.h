@@ -355,6 +355,25 @@ long data_open(const char* name);
 /// @return its handle, or a negative GEMDOS error
 long data_create(const char* name);
 
+/// Reads from a file, as Fread() does. The disk's DMA reaches only ST-RAM,
+/// so a driver copies what is bound for TT-RAM itself: older GemDrives more
+/// slowly than reading into ST-RAM and copying, newer ones faster. So the
+/// first reads into TT-RAM go 8 KB at a time each way in turn, through a
+/// buffer in ST-RAM and straight, and the rest the way that was faster.
+///
+/// @param fh the file's handle
+/// @param n the bytes to read
+/// @param dst where they go, in either memory
+/// @return the bytes read, or a negative GEMDOS error
+long data_read(long fh, long n, void* dst);
+
+/// How data_read() reads into TT-RAM, for the test log.
+///
+/// @param ms gets the milliseconds its trial took each way, through ST-RAM
+/// and straight, over 512 KB each
+/// @return 1 straight, 0 through ST-RAM, -1 while it is still trying both
+int data_read_way(long ms[2]);
+
 /// Loads GAME.DAT, moving on to the data's folder: the campaigns, their
 /// missions and the music.
 ///

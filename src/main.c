@@ -180,6 +180,74 @@ static void log_stats(const char* what) {
     );
 }
 
+/* How fast the disk reads a data file: a megabyte at a time from further
+ * into it each time, so that no cache holds it, in reads of 8, 32 and 64 KB,
+ * into ST-RAM, into TT-RAM, and into TT-RAM as the game reads
+ * (data_read()), and which way data_read() chose */
+static void test_disk(const char* name) {
+    static const long reads[3] = {8192, 32768, 65536};
+    static const char* const into[4] = {"ST-RAM", "TT-RAM", "TT-RAM by data_read()", "ST-RAM again"};
+    long fh = data_open(name), ofs = 0;
+    uint8_t *st, *tt;
+    uint32_t t0;
+    int m, r;
+    if (fh < 0) {
+        test_log("disk: can't open %s", name);
+        return;
+    }
+    /* the last set reads into ST-RAM again, further into the file, to show
+     * whether the place in the file matters */
+    for (m = 0; m < 4; m++) {
+        uint8_t* buf = (uint8_t*)Mxalloc(65536, m == 1 || m == 2);
+        if ((long)buf <= 0) {
+            test_log("disk: no room in %s", into[m]);
+            continue;
+        }
+        for (r = 0; r < (m == 3 ? 1 : 3); r++) {
+            long got = 0, n;
+            uint32_t t;
+            t0 = HZ200;
+            (void)Fseek(ofs, (short)fh, 0);
+            while (got < 1024L * 1024 &&
+                   (n = m == 2 ? data_read(fh, reads[r], buf) : Fread((short)fh, reads[r], buf)) > 0)
+                got += n;
+            t = (HZ200 - t0) * 5;
+            ofs += got;
+            test_log(
+                "disk: %s into %s in reads of %ld KB: %ld KB in %ld ms, %ld KB/s",
+                name,
+                into[m],
+                reads[r] / 1024,
+                got / 1024,
+                (long)t,
+                t ? got / 1024 * 1000 / (long)t : 0L
+            );
+        }
+        (void)Mfree(buf);
+    }
+    (void)Fclose((short)fh);
+    /* what data_read() adds to a read into TT-RAM: its copy alone */
+    st = tt_alloc_st(8192);
+    tt = (uint8_t*)Mxalloc(65536, 1);
+    if (st && (long)tt > 0) {
+        t0 = HZ200;
+        for (r = 0; r < 128; r++)
+            memcpy(tt + (r & 7) * 8192L, st, 8192);
+        test_log("disk: copying 1024 KB from ST-RAM to TT-RAM, 8 KB at a time: %ld ms", (long)(HZ200 - t0) * 5);
+    }
+    if ((long)tt > 0)
+        (void)Mfree(tt);
+    tt_free(st);
+    {
+        static const char* const way[3] = {"is still trying both ways", "reads through ST-RAM", "reads straight"};
+        long ms[2];
+        int w = data_read_way(ms);
+        test_log(
+            "disk: data_read() %s into TT-RAM: 512 KB through ST-RAM in %ld ms, straight in %ld ms", way[w + 1], ms[0], ms[1]
+        );
+    }
+}
+
 /* One frame of the script: runs commands until a wait */
 static int test_next(void) {
     char line[128];
@@ -352,6 +420,9 @@ static int test_next(void) {
             game_explore_all();
         } else if (!strcmp(word, "explored")) {
             game_log_explored();
+        } else if (!strcmp(word, "disk")) {
+            sscanf(line + 4, "%31s", word);
+            test_disk(word);
         } else if (!strcmp(word, "film")) {
             uint32_t t0 = HZ200;
             int k;
@@ -361,7 +432,18 @@ static int test_next(void) {
             film_frames_left = b;
             k = film_play(a, film_skip);
             film_frames_left = -1;
-            test_log("film %d: %d frames in %ld ms", a, k, (long)(HZ200 - t0) * 5);
+            test_log(
+                "film %d: %d frames in %ld ms, read ahead into %ld KB, reading %ld ms, drawing %ld ms, "
+                "%d late by up to %ld ms",
+                a,
+                k,
+                (long)(HZ200 - t0) * 5,
+                film_stats.ring_kb,
+                film_stats.read_ms,
+                film_stats.draw_ms,
+                film_stats.late,
+                film_stats.late_ms
+            );
         } else if (!strcmp(word, "sprites")) {
             int32_t used, size;
             int n = spr_stats(&used, &size);

@@ -65,7 +65,9 @@ static int falcon;                /* a Falcon, not a TT: an experiment, see the 
 static uint32_t set_at[NSCREENS]; /* the blank count when each was last made the base */
 static int latest, shown;         /* the base last set, and the screen surely on show */
 static uint32_t old_cacr;
-static uint16_t shown_palette[16]; /* the colours tt_set_palette() last set */
+static uint16_t shown_palette[16]; /* the colours on show */
+static uint16_t next_palette[16];  /* tt_set_palette()'s, for the next tt_flip() */
+static int palette_waits;
 
 static uint16_t old_shift, old_palette[256]; /* the TT's, as the game found them */
 static uint32_t old_base;
@@ -314,8 +316,8 @@ void tt_film_end(void) {
 /* ------------------------------------------------------------ either machine */
 
 void tt_set_palette(const uint16_t* pal) {
-    memcpy(shown_palette, pal, sizeof shown_palette);
-    set_colours(pal, 16);
+    memcpy(next_palette, pal, sizeof next_palette);
+    palette_waits = 1;
 }
 
 void tt_get_palette(uint16_t* pal) {
@@ -330,7 +332,21 @@ void tt_flip(void) {
     /* a blank since the last base was set means that one is on show now */
     if (VBLCLOCK > set_at[latest])
         shown = latest;
-    set_base(tt_back);
+    if (palette_waits) {
+        /* new colours come with the screen drawn for them: black from one
+         * blank, as the new base is set, and the colours from the next,
+         * when the base has surely been taken up, so that neither screen
+         * shows in the other's colours, wherever in the blank the machine
+         * reads the base */
+        tt_wait_vbl();
+        set_colours(0, 16);
+        set_base(tt_back);
+        tt_wait_vbl();
+        set_colours(next_palette, 16);
+        memcpy(shown_palette, next_palette, sizeof shown_palette);
+        palette_waits = 0;
+    } else
+        set_base(tt_back);
     set_at[b] = VBLCLOCK;
     latest = b;
     tt_front = tt_back;

@@ -64,7 +64,8 @@ extern uint8_t* tt_screens[NSCREENS];
 /// tt_back to a screen neither shown nor waiting to be.
 void tt_flip(void);
 
-/// Sets the 16 colours.
+/// Sets the 16 colours, from the next tt_flip(): they change with the
+/// screen drawn for them, a black frame between the two.
 ///
 /// @param pal 16 colours, 4 bits a gun: 0x0RGB
 void tt_set_palette(const uint16_t* pal);

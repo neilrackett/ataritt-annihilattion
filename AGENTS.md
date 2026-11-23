@@ -178,8 +178,11 @@ stage's share; `fps1`, `fps3`, `scroll` and `battle` are the ones to watch.
   GemDrive (Neil's driver is in `../acsi2stm`) adds about 0.35 s with
   `GEMDRIVE.PRG` from his release of 23 November 2026, but more than the
   buffer from its boot sector or with older firmware. So `data_read()`
-  takes turns, 512 KB each way, and then keeps to the faster one: use it
-  for every read into TT-RAM. GemDrive before that release also read more
+  reads its first megabyte half each way, in runs of 256 KB, and then
+  keeps to the faster one: use it for every read into TT-RAM. Time runs,
+  not single chunks: 8 KB each way in turn took 25 ms a pair, five ticks of
+  the 200 Hz clock, so the rounding fell on the same side every time and
+  the faster way looked slower. GemDrive before that release also read more
   slowly the further into a file it was, so compare figures from the same
   firmware. Hatari reads in no time at all, so only the TT shows any of
   this; the `disk` test command measures it there, and logs which way

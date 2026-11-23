@@ -63,21 +63,24 @@ long data_create(const char* name) {
 #define BOUNCE 8192L                 /* read through ST-RAM at a time */
 #define TT_RAM 0x01000000UL          /* where TT-RAM starts */
 #define TRIAL (512 * 1024L)          /* read each way into TT-RAM before choosing */
+#define TRIAL_RUN (256 * 1024L)      /* read one way before the other */
 
 static int straight = -1;            /* into TT-RAM: 1 straight, 0 through ST-RAM, -1 trying both */
 static long tried[2], took[2];       /* the trial's bytes and 200 Hz ticks, through ST-RAM and straight */
 
 long data_read(long fh, long n, void* dst) {
     static uint8_t* bounce;
-    static int turn;
     uint8_t* d = dst;
     long got = 0;
     if ((uint32_t)d < TT_RAM || straight == 1 || (!bounce && !(bounce = tt_alloc_st(BOUNCE))))
         return Fread((short)fh, n, d);
     while (got < n) {
         long want = n - got < BOUNCE ? n - got : BOUNCE, r;
-        /* while trying, a chunk each way in turn */
-        int way = straight < 0 && (turn ^= 1);
+        /* while trying, runs through ST-RAM, straight, straight and through
+         * ST-RAM, long enough for the 200 Hz clock: a chunk each way in turn
+         * kept step with it, and timed the faster way the slower */
+        long run = (tried[0] + tried[1]) / TRIAL_RUN;
+        int way = straight < 0 && ((run ^ (run >> 1)) & 1);
         uint32_t t = HZ200;
         r = Fread((short)fh, want, way ? d + got : bounce);
         if (r <= 0)

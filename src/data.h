@@ -358,8 +358,8 @@ long data_create(const char* name);
 /// Reads from a file, as Fread() does. The disk's DMA reaches only ST-RAM,
 /// so a driver copies what is bound for TT-RAM itself: older GemDrives more
 /// slowly than reading into ST-RAM and copying, newer ones faster. So the
-/// first reads into TT-RAM go 8 KB at a time each way in turn, through a
-/// buffer in ST-RAM and straight, and the rest the way that was faster.
+/// first megabyte read into TT-RAM goes half each way, through a buffer in
+/// ST-RAM and straight, and the rest the way that was faster.
 ///
 /// @param fh the file's handle
 /// @param n the bytes to read

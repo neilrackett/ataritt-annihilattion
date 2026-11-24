@@ -91,7 +91,8 @@ ago make room, those no unit or wreck needs first.
 The simulation runs 15 ticks a second in 24.8 fixed point: A\* paths on a grid
 of 32-pixel cells that movement keeps to as well, with each movement class's
 reachable parts of the map labelled when a mission starts so that no search
-looks for a place out of reach; 64-pixel buckets for finding units; line of
+looks for a place out of reach; 64-pixel buckets for finding units, and
+256-pixel cells of each side's units for searches further afield; line of
 sight and radar; aircraft that fly straight at their height, ships on the
 water and submarines under it, each weapon hitting only what it can reach;
 the economy; captures and repairs; silos' missiles and the systems that

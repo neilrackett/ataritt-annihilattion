@@ -41,6 +41,15 @@ int32_t sim_message_tick = -1000;
 static void* map_block;
 static int bw, bh; /* buckets across and down */
 static int16_t* bucket;
+/* The searches wider than three buckets go through coarser cells of 4 x 4
+ * buckets, a side's units only: per side, each cell's first unit, linked on
+ * through cnext; reach is the furthest a unit moves in a tick, after the
+ * cells were filled */
+#define COARSE 4
+static int cw, ch;
+static int16_t* coarse[2];
+static int16_t cnext[MAX_UNITS];
+static int reach;
 static uint8_t* seen;
 static int pw, ph, pshift, pmask; /* path cells across and down; a row is 1 << pshift */
 static uint8_t* pblock;           /* per path cell: the move classes it is closed to */
@@ -666,20 +675,17 @@ static void paths_step(void) {
 /* ------------------------------------------------------------ buckets and sight */
 
 /* Each player's living units, a list each, for searches too wide for the buckets */
-static int16_t side_units[2][MAX_UNITS];
-static int nside[2];
 
 static void build_buckets(void) {
     int i;
-    for (i = 0; i < bw * bh; i++)
-        bucket[i] = -1;
-    nside[0] = nside[1] = 0;
+    /* every entry -1, none a unit */
+    memset(bucket, 0xFF, (size_t)bw * bh * sizeof bucket[0]);
+    memset(coarse[0], 0xFF, (size_t)2 * cw * ch * sizeof coarse[0][0]);
     for (i = 0; i < unit_hi; i++) {
         Unit* u = &units[i];
         int bx, bz, b;
         if (!u->alive)
             continue;
-        side_units[u->owner][nside[u->owner]++] = (int16_t)i;
         bx = (u->x >> FIX) / BUCKET;
         bz = (u->z >> FIX) / BUCKET;
         if (bx < 0)
@@ -693,6 +699,9 @@ static void build_buckets(void) {
         b = bz * bw + bx;
         u->next = bucket[b];
         bucket[b] = (int16_t)i;
+        b = bz / COARSE * cw + bx / COARSE;
+        cnext[i] = coarse[u->owner][b];
+        coarse[u->owner][b] = (int16_t)i;
     }
 }
 
@@ -1356,36 +1365,48 @@ int manual_weapon(const UnitType* t) {
 
 /* The nearest enemy within radius that the unit can fight (any, for type
  * -2), or of a type, or -1; aircraft before the rest for a unit that prefers
- * them */
+ * them. A narrow search goes bucket by bucket, keeping the first of the
+ * nearest it meets. A wide one goes through the enemy side's coarse cells,
+ * keeping the lowest numbered of the nearest, as going down all the side's
+ * units in turn did: the cells are those any unit within radius could have
+ * been in when they were filled, so it finds the same */
 static int nearest_enemy(const Unit* u, int radius, int type) {
     int x = u->x >> FIX, z = u->z >> FIX;
     int bx0, bx1, bz0, bz1, bx, bz, best = -1, bestd = radius + 1, air = -1, aird = radius + 1;
     int pref = (unittypes[u->type].flags & UF_AIRPREF) != 0;
-    int wide = radius > BUCKET * 3, k = 0, i;
-    const int16_t* list = side_units[!u->owner];
-    bucket_range(x, z, radius, &bx0, &bx1, &bz0, &bz1);
+    int wide = radius > BUCKET * 3, across, i;
+    const int16_t* heads;
+    if (wide) {
+        int r = radius + reach, cell = BUCKET * COARSE;
+        heads = coarse[!u->owner];
+        across = cw;
+        bx0 = x - r < 0 ? 0 : (x - r) / cell;
+        bz0 = z - r < 0 ? 0 : (z - r) / cell;
+        bx1 = (x + r) / cell < cw ? (x + r) / cell : cw - 1;
+        bz1 = (z + r) / cell < ch ? (z + r) / cell : ch - 1;
+    } else {
+        heads = bucket;
+        across = bw;
+        bucket_range(x, z, radius, &bx0, &bx1, &bz0, &bz1);
+    }
     bx = bx0;
     bz = bz0;
-    i = wide ? (nside[!u->owner] ? list[0] : -1) : bucket[bz * bw + bx];
+    i = heads[bz * across + bx];
     for (;;) {
         const Unit* v;
-        int dx, dz, near, nearair;
-        /* the next unit: down the list, or bucket by bucket */
+        int dx, dz, near, nearair, vi;
+        /* the next unit, cell by cell */
         while (i < 0) {
-            if (wide)
-                goto done;
             if (++bx > bx1) {
                 bx = bx0;
                 if (++bz > bz1)
                     goto done;
             }
-            i = bucket[bz * bw + bx];
+            i = heads[bz * across + bx];
         }
-        v = &units[i];
-        if (wide)
-            i = ++k < nside[!u->owner] ? list[k] : -1;
-        else
-            i = v->next;
+        vi = i;
+        v = &units[vi];
+        i = wide ? cnext[vi] : v->next;
         if (!v->alive || v->owner == u->owner)
             continue;
         dx = (v->x >> FIX) - x;
@@ -1396,19 +1417,19 @@ static int nearest_enemy(const Unit* u, int radius, int type) {
             continue;
         if (u->owner == PLAYER && !(v->flags & UF_SEEN))
             continue;
-        near = within(dx, dz, bestd);
-        nearair = pref && within(dx, dz, aird) && flies(v);
+        near = within(dx, dz, bestd) || (wide && vi < best && within(dx, dz, bestd + 1));
+        nearair = pref && (within(dx, dz, aird) || (wide && vi < air && within(dx, dz, aird + 1))) && flies(v);
         if (!near && !nearair)
             continue;
         if (type == -1 && !can_attack(u, v))
             continue;
         if (nearair) {
             aird = dist(dx, dz);
-            air = (int)(v - units);
+            air = vi;
         }
         if (near) {
             bestd = dist(dx, dz);
-            best = (int)(v - units);
+            best = vi;
         }
     }
 done:
@@ -2687,17 +2708,22 @@ static void check_objectives(void) {
 
 /* The map's arrays, in one block */
 static int map_alloc(void) {
-    int32_t nb = (int32_t)bw * bh, np = (int32_t)ph << pshift;
+    int32_t nb = (int32_t)bw * bh, np = (int32_t)ph << pshift, nc = (int32_t)cw * ch;
     int32_t no = ((int32_t)mission.w * mission.h + 7) / 8;
     uint8_t* p;
     int i;
     sim_stop();
-    map_block = tt_alloc_any(nb * 4 + np * (6 + nclasses) + no + 16);
+    /* within the 8 bytes a path cell, and the explored map's, that
+     * tools/convert.py's map_memory() allows */
+    map_block = tt_alloc_any(nb * 4 + nc * 4 + np * (6 + nclasses) + no + 16);
     if (!map_block)
         return 0;
     p = map_block;
     bucket = (int16_t*)p;
     p += nb * 2;
+    coarse[0] = (int16_t*)p;
+    coarse[1] = coarse[0] + nc;
+    p += nc * 4;
     gcost = (uint16_t*)p;
     p += np * 2;
     seen = p;
@@ -2759,6 +2785,13 @@ int sim_start(int schema) {
     sim_message_tick = -1000;
     bw = (mission.w * 16 + BUCKET - 1) / BUCKET;
     bh = (mission.h * 16 + BUCKET - 1) / BUCKET;
+    cw = (bw + COARSE - 1) / COARSE;
+    ch = (bh + COARSE - 1) / COARSE;
+    reach = 0;
+    for (i = 0; i < nunittypes; i++)
+        if (unittypes[i].speed > reach)
+            reach = unittypes[i].speed;
+    reach = (reach >> 8) + 2;
     pw = (mission.w + 1) / 2;
     ph = (mission.h + 1) / 2;
     for (pshift = 0; (1 << pshift) < pw; pshift++)

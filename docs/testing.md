@@ -14,6 +14,7 @@ program's log is `OALOG.TXT` there, and every shot the script took is a PNG.
   function.
 - `DATA` names another game's folder, its data in `DATA` there, such as
   `dist/full` for the full game.
+- `CLOCK` sets the CPU's speed in MHz, such as `CLOCK=16`.
 
 `tools/test_missions.sh SCRIPT [MISSION...]` runs a script on each of the
 full game's missions and skirmish maps in turn, or those named

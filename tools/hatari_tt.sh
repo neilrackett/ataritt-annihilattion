@@ -12,7 +12,8 @@
 # Environment: MACHINE (tt, the default, or falcon), MONITOR (vga, the
 # default, or for a Falcon rgb or tv), TOS (default:
 # "tmp/tos/TOS 3.06 - UK.img"; for a Falcon, "tmp/tos/EmuTOS 1.4 - UK -
-# 512K.img"), HATARI (default: hatari on the PATH, else the Mac app).
+# 512K.img"), HATARI (default: hatari on the PATH, else the Mac app), CLOCK
+# (the CPU's MHz, such as 16; default: the machine's own).
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 REPO=$HERE
 GAME=$REPO/dist
@@ -26,4 +27,4 @@ else
 fi
 [ -f "$TOS" ] || { echo "No TOS image at $TOS: set TOS to one (docs/building.md)." >&2; exit 1; }
 HATARI_FLAGS=(--tos "$TOS" "${MACHINE_FLAGS[@]}" --mmu off --monitor "${MONITOR:-vga}" --cpu-exact on
-  --data-cache on --fast-boot on --confirm-quit false)
+  --data-cache on --fast-boot on --confirm-quit false ${CLOCK:+--cpuclock $CLOCK})

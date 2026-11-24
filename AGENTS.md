@@ -68,7 +68,13 @@ things out quickly (into another folder: the result is incomplete).
 `tmp/runs/NAME/OALOG.TXT`, which ends in `result N` for a mission.
 `MACHINE=falcon` runs the Falcon (`MONITOR=rgb` or `tv` for its RGB
 mode), `PRG=` another build, `PROF=1` writes a profile for
-`tools/profsum.py`.
+`tools/profsum.py`, `CLOCK=16` runs the CPU at 16 MHz.
+
+**Before committing a change to the simulation that should not change what
+happens**, run scripts that are `fast` from their first line with both
+builds and compare their `units` lines, which give every unit's place and
+hit points. A script that starts at 15 ticks a second runs differently
+whenever a frame takes longer.
 
 What each script should end with, on the TT and the Falcon alike:
 `m1_gate`, `win2` and `win3` win (`result 1`); `long2` and `m2_attack` lose
@@ -162,6 +168,13 @@ stage's share; `fps1`, `fps3`, `scroll` and `battle` are the ones to watch.
   until its path comes. A low cap left units in the dead ends of winding
   maps. Searches that ran to their limit for land units across water took
   200 ms a tick on the archipelago.
+- **A search for the nearest enemy looks only where one could be.** Each
+  side's units are also kept in cells of 4 x 4 buckets, filled with the
+  buckets each tick, and `nearest_enemy()` looks through those within its
+  radius and `reach`, the furthest a unit moves in a tick. It keeps the
+  lowest-numbered of the nearest, as going down the enemy's whole list did.
+  That list, for searches wider than three buckets (most of them, by weapon
+  range or sight), took 30% of AC25's time.
 - **A building touching a path cell closes it**: buildings 16 pixels apart
   wall units in. The skirmish computer leaves 32 pixels round its own, and
   the lane in front of a factory clear.

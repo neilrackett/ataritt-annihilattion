@@ -39,7 +39,7 @@ difficulty plays Core.
 | `explore` | uncovers the whole map, as if every part of it had been seen |
 | `shot NAME` | a screenshot |
 | `stats`, `units`, `res`, `proj`, `feat` | logs the timings, the units, both players' resources, the shots in flight, or the features in view |
-| `check` | logs where the screen differs from the buffers it is drawn from, and where the background differs from the same drawn afresh |
+| `check` | logs where the composite differs from the background with the units drawn afresh, the screen from the composite, and the background from the same drawn afresh |
 | `debug UNIT` | logs a unit's movement and path |
 | `kill TYPE`, `killall`, `teleport UNIT X Z` | destroys every computer unit of a type, or all of them, or moves a unit |
 | `spawn TYPE X Z [1]`, `give TYPE` | puts down a unit of the player's (or with 1 the computer's), or hands the player the computer's first unit of a type, as a capture does |

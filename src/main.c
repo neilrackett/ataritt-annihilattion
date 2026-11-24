@@ -158,7 +158,7 @@ static int next_line(char* line, int n) {
 
 static void log_stats(const char* what) {
     test_log(
-        "stages ms: bg %ld field %ld (to screen %ld, units %ld) minimap %ld side %ld bars %ld",
+        "stages ms: bg %ld field %ld (restore %ld, units %ld) minimap %ld side %ld bars %ld",
         (long)stage_hz[0] * 5,
         (long)stage_hz[1] * 5,
         (long)stage_hz[5] * 5,

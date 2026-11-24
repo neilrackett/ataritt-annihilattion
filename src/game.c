@@ -887,7 +887,7 @@ static int ring_g0 = -100000, ring_y0; /* the rings hold groups ring_g0.. and ro
 static Piece pieces[4];
 static int npieces;
 static int32_t bg_version = -1;
-static uint8_t marks[NMARKS][CELL_ROWS][RING_G] __attribute__((aligned(4))); /* ring cells changed, a frame each */
+static uint32_t marks[NMARKS][CELL_ROWS]; /* ring cells changed, a frame each: a bit a column */
 static int mark_cur;
 static int16_t feat_order[MAX_FEATS];  /* the features drawn on their own, back to front */
 static int16_t feat_order_z[MAX_FEATS]; /* and each one's z when it went in */
@@ -905,6 +905,7 @@ static const int16_t* feat_sprite(int type) {
 static int nfeat_order;
 
 static int piece_cols, seam_x, seam_y; /* how the pieces lie: where the second column and row start */
+static int ring_r0, ring_rr0;          /* the cell row ring_y0 is in, and its ring row */
 
 static int ring_mod(int v, int n) {
     v %= n;
@@ -920,6 +921,8 @@ static void set_pieces(void) {
     piece_cols = ncols;
     seam_x = c0 ? (ring_g0 + RING_G - c0) * 16 : 0x7FFF;
     seam_y = r0 ? ring_y0 + RING_H - r0 : 0x7FFF;
+    ring_r0 = ring_y0 >> 4;
+    ring_rr0 = ring_mod(ring_r0, CELL_ROWS);
     for (j = 0; j < nrows; j++)
         for (i = 0; i < ncols; i++) {
             Piece* p = &pieces[npieces++];
@@ -933,9 +936,16 @@ static void set_pieces(void) {
         }
 }
 
-/* Marks the ring cells under a battlefield rectangle as changed this frame */
-static void mark(int x0, int y0, int x1, int y1) {
-    int r, g;
+/* Ring cells a bit each, a word a cell row: bit c is ring column c */
+_Static_assert(RING_G == 32, "a cell row's bits are a word");
+static uint32_t dirty[CELL_ROWS]; /* the cells to draw again this frame */
+static uint32_t trans[CELL_ROWS]; /* those this frame's shots, effects and boxes went over */
+
+/* The ring cells under a battlefield rectangle: its first ring row, its
+ * number of rows and its columns' bits; 0 when it lies outside the rings */
+static int ring_cells(int x0, int y0, int x1, int y1, int* rr, uint32_t* cols) {
+    int c0, n;
+    uint32_t m;
     if (x0 < ring_g0 * 16)
         x0 = ring_g0 * 16;
     if (y0 < ring_y0)
@@ -945,16 +955,49 @@ static void mark(int x0, int y0, int x1, int y1) {
     if (y1 > ring_y0 + RING_H - 1)
         y1 = ring_y0 + RING_H - 1;
     if (x0 > x1 || y0 > y1)
-        return;
-    {
-        /* the ring's row stepped rather than divided for; its 32 columns wrap by a mask */
-        int rr = ring_mod(y0 >> 4, CELL_ROWS), c0 = (x0 >> 4) & (RING_G - 1), n = (x1 >> 4) - (x0 >> 4);
-        for (r = y0 >> 4; r <= y1 >> 4; r++, rr = rr + 1 < CELL_ROWS ? rr + 1 : 0) {
-            uint8_t* row = marks[mark_cur][rr];
-            for (g = 0; g <= n; g++)
-                row[(c0 + g) & (RING_G - 1)] = 1;
-        }
+        return 0;
+    c0 = (x0 >> 4) & (RING_G - 1);
+    n = (x1 >> 4) - (x0 >> 4) + 1;
+    m = n >= 32 ? 0xFFFFFFFFUL : (1UL << n) - 1;
+    *cols = c0 ? m << c0 | m >> (32 - c0) : m;
+    *rr = ring_rr0 + (y0 >> 4) - ring_r0; /* 0 to 26 rows on: wrapped by a subtraction */
+    if (*rr >= CELL_ROWS)
+        *rr -= CELL_ROWS;
+    return (y1 >> 4) - (y0 >> 4) + 1;
+}
+
+/* Marks a battlefield rectangle's ring cells in a grid */
+static void mark_in(uint32_t* grid, int x0, int y0, int x1, int y1) {
+    uint32_t cols;
+    int rr, n = ring_cells(x0, y0, x1, y1, &rr, &cols);
+    for (; n > 0; n--) {
+        grid[rr] |= cols;
+        if (++rr == CELL_ROWS)
+            rr = 0;
     }
+}
+
+/* Marks a rectangle's cells in a grid if it meets one marked already, and
+ * says whether it did */
+static int spread(uint32_t* grid, int x0, int y0, int x1, int y1) {
+    uint32_t cols;
+    int rr, r, k, n = ring_cells(x0, y0, x1, y1, &rr, &cols);
+    for (r = 0, k = rr; r < n && !(grid[k] & cols); r++)
+        if (++k == CELL_ROWS)
+            k = 0;
+    if (r == n)
+        return 0;
+    for (; n > 0; n--) {
+        grid[rr] |= cols;
+        if (++rr == CELL_ROWS)
+            rr = 0;
+    }
+    return 1;
+}
+
+/* Marks the cells a shot, an effect or a box goes over this frame */
+static void mark(int x0, int y0, int x1, int y1) {
+    mark_in(trans, x0, y0, x1, y1);
 }
 
 /* The battlefield rectangle a sprite drawn at x, y can cover */
@@ -1009,14 +1052,13 @@ static const Piece* first_piece(int x0, int y0, int x1, int y1) {
 
 enum { BLIT_SPRITE, BLIT_NANO, BLIT_TINT };
 
-/* Draws a sprite on the composite and marks where it went */
-static void comp_blit(int how, const int16_t* spr, int x, int y, int arg) {
+/* Draws a sprite on the composite */
+static void comp_draw(int how, const int16_t* spr, int x, int y, int arg) {
     int x0, y0, x1, y1;
     const Piece* p;
     if (spr[0] <= 0)
         return;
     sprite_box(spr, x, y, &x0, &y0, &x1, &y1);
-    mark(x0, y0, x1, y1);
     FOR_PIECES(p, x0, y0, x1, y1) {
         if (how == BLIT_NANO)
             gfx_sprite_nano(comp, spr, x + p->dx, y + p->dy, arg);
@@ -1025,6 +1067,16 @@ static void comp_blit(int how, const int16_t* spr, int x, int y, int arg) {
         else
             gfx_sprite(comp, spr, x + p->dx, y + p->dy);
     }
+}
+
+/* Draws a shot's, an effect's or a title's sprite, marking where it went */
+static void comp_blit(int how, const int16_t* spr, int x, int y, int arg) {
+    int x0, y0, x1, y1;
+    if (spr[0] <= 0)
+        return;
+    sprite_box(spr, x, y, &x0, &y0, &x1, &y1);
+    mark(x0, y0, x1, y1);
+    comp_draw(how, spr, x, y, arg);
 }
 
 static void comp_fill(int x0, int y0, int x1, int y1, int c) {
@@ -1215,7 +1267,7 @@ static void bg_render(int x0, int y0, int x1, int y1) {
             bg_render_piece(p, ax, ay, bx, by);
     }
     gfx_stride = LINE_BYTES;
-    mark(x0, y0, x1, y1);
+    mark_in(dirty, x0, y0, x1, y1);
 }
 
 /* Brings the background up to date with the view, the features and the
@@ -1280,8 +1332,6 @@ static void bg_update(void) {
     feat_dirty_x1 = -1;
 }
 
-/* Readies the composite: the background where last frame's things were, and
- * where the background changed */
 /* Copies n groups (n > 0) from s to d, and returns where d got to: a group a
  * pass, which GCC's own loops do not manage */
 static inline uint32_t* copy_run(uint32_t* d, const uint32_t* s, int n) {
@@ -1309,27 +1359,37 @@ static int row_clear(const uint8_t* m) {
     return !(w[0] | w[1] | w[2] | w[3] | w[4] | w[5] | w[6] | w[7]);
 }
 
-static void comp_begin(void) {
-    int r, c, prev = mark_cur; /* the last frame's marks, before the ring moves on */
+/* Readies the composite: the background in the cells to draw again */
+static void comp_restore(void) {
+    int r;
     for (r = 0; r < CELL_ROWS; r++) {
-        if (row_clear(marks[prev][r]))
-            continue;
-        for (c = 0; c < RING_G; c++) {
+        uint32_t m = dirty[r];
+        int c = 0;
+        while (m) {
             int n = 0;
-            if (!marks[prev][r][c])
-                continue;
-            while (c + n < RING_G && marks[prev][r][c + n])
+            for (; !(m & 1); m >>= 1)
+                c++;
+            for (; m & 1; m >>= 1)
                 n++;
             copy_groups(
                 (uint32_t*)(comp + r * 16 * RING_STRIDE + c * 8),
                 (const uint32_t*)(bg + r * 16 * RING_STRIDE + c * 8),
                 n
             );
-            c += n - 1;
+            c += n;
         }
     }
+}
+
+/* Keeps the cells of the composite that changed this frame, for the
+ * screens: those drawn again and those drawn over */
+static void comp_marks(void) {
+    int r;
     mark_cur = (mark_cur + 1) % NMARKS;
-    memset(marks[mark_cur], 0, sizeof marks[mark_cur]);
+    for (r = 0; r < CELL_ROWS; r++) {
+        marks[mark_cur][r] = dirty[r] | trans[r];
+        dirty[r] = 0;
+    }
 }
 
 /* Copies n groups of the composite's ring row row, from ring group c on, to d */
@@ -1371,32 +1431,23 @@ static void comp_to_screen(uint8_t* scr) {
         copy_view(scr, 0, VIEW_H - 1, 0, VIEW_COLS - 1);
     } else {
         /* the battlefield's cells in view that a frame since marked: screen
-         * group k shows the battlefield's group g0 + k */
-        static uint8_t any[CELL_ROWS][RING_G] __attribute__((aligned(4)));
-        const uint32_t *m0 = (const uint32_t*)marks[0][0], *m1 = (const uint32_t*)marks[1][0],
-                       *m2 = (const uint32_t*)marks[2][0], *m3 = (const uint32_t*)marks[3][0];
-        uint32_t* u = (uint32_t*)any[0];
-        int i, rr = ring_mod(camy >> 4, CELL_ROWS), cg = ring_mod(g0, RING_G), last = VIEW_COLS - 1;
-        for (i = 0; i < CELL_ROWS * RING_G / 4; i++) /* four cells at a time */
-            u[i] = m0[i] | m1[i] | m2[i] | m3[i];
+         * group j shows the battlefield's group g0 + j, ring column cg + j */
+        int rr = ring_mod(camy >> 4, CELL_ROWS), cg = ring_mod(g0, RING_G);
         for (r = camy >> 4; r <= (camy + VIEW_H - 1) >> 4; r++, rr = rr + 1 < CELL_ROWS ? rr + 1 : 0) {
-            uint8_t m[RING_G * 2]; /* the row twice over, so the view's cells run on unwrapped */
-            const uint8_t* v = m + cg;
             int y0 = r * 16 > camy ? r * 16 - camy : 0;
             int y1 = r * 16 + 15 < camy + VIEW_H - 1 ? r * 16 + 15 - camy : VIEW_H - 1;
-            int j = 0;
-            if (row_clear(any[rr]))
-                continue;
-            memcpy(m, any[rr], RING_G);
-            memcpy(m + RING_G, any[rr], RING_G);
-            while (j <= last) {
+            int i, j = 0;
+            uint32_t v = 0;
+            for (i = 0; i < NMARKS; i++)
+                v |= marks[i][rr];
+            if (cg)
+                v = v >> cg | v << (32 - cg); /* bit j for screen group j */
+            while (v) {
                 int j0;
-                if (!v[j]) {
+                for (; !(v & 1); v >>= 1)
                     j++;
-                    continue;
-                }
                 j0 = j;
-                while (j <= last && v[j])
+                for (; v & 1; v >>= 1)
                     j++;
                 copy_view(scr, y0, y1, j0, j - 1);
             }
@@ -1783,17 +1834,106 @@ static void draw_selection(const Unit* u, int x, int y) {
     mark(x - r, top, x + r, bot + 3);
 }
 
+/* What each unit drew on the composite last frame. A unit that draws the
+ * same again is left there, unless something under or over it is drawn
+ * again: those cells are drawn again whole, from the background up. */
+enum { LOOK_PLAIN, LOOK_NANO, LOOK_TINT }; /* drawn whole, half built, paralyzed in its flash */
+typedef struct {
+    const int16_t* spr;     /* null for nothing */
+    int16_t x0, y0, x1, y1; /* the box it covers */
+    int32_t built;          /* how far built, for the nanolathe's frame */
+    uint16_t depth;         /* its place in the order */
+    uint8_t type, look;     /* its type, and a LOOK_ */
+    uint8_t seen;           /* the drawing it was last in */
+} Drawn;
+static Drawn drawn[MAX_UNITS];
+static int drawn_hi, ndraw;
+static uint8_t draw_no;
+static uint8_t redraw[MAX_DRAW];
+
+static void draw_unit(const Drawn* d) {
+    int x = d->x0 + d->spr[2], y = d->y0 + d->spr[3];
+    if (d->look == LOOK_NANO) {
+        comp_draw(BLIT_NANO, d->spr, x, y, (int)d->built);
+    } else {
+        comp_draw(BLIT_SPRITE, d->spr, x, y, 0);
+        if (d->look == LOOK_TINT)
+            comp_draw(BLIT_TINT, d->spr, x, y, C_WHITE);
+    }
+}
+
+/* Notes what each unit in the draw list draws this frame, marking where it
+ * was and where it is when that changed, and where units no longer drawn
+ * were */
+static void units_changed(int n) {
+    int k, i, hi = 0;
+    draw_no++;
+    for (k = 0; k < n; k++) {
+        const Unit* u;
+        const UnitType* t;
+        const int16_t* spr;
+        Drawn* d;
+        int sx, sy, x0, y0, x1, y1, look = LOOK_PLAIN;
+        int32_t built = 0;
+        i = drawlist[k] & 0xFFFF;
+        u = &units[i];
+        t = &unittypes[u->type];
+        d = &drawn[i];
+        spr = unit_frame(u->type, t->ndirs == 16 ? ((u->heading + 2048) >> 12) & 15 : 0);
+        sx = u->x >> FIX;
+        sy = unit_draw_y(u);
+        if (u->flags & UF_UNBUILT) {
+            look = LOOK_NANO;
+            built = built_of(u, 256);
+        } else {
+            /* a walking unit bobs a pixel as it goes */
+            if (u->speed && t->kind == UK_MOBILE && ((game_frames >> 1) & 1))
+                sy--;
+            if (u->paralyzed && (game_frames & 2))
+                look = LOOK_TINT;
+        }
+        redraw[k] = 0;
+        d->seen = draw_no;
+        if (i >= hi)
+            hi = i + 1;
+        if (spr[0] <= 0)
+            spr = 0;
+        else
+            sprite_box(spr, sx, sy, &x0, &y0, &x1, &y1);
+        if (spr == d->spr && (!spr || (x0 == d->x0 && y0 == d->y0 && u->type == d->type &&
+                                       look == d->look && built == d->built &&
+                                       drawlist[k] >> 16 == d->depth)))
+            continue;
+        if (d->spr)
+            mark_in(dirty, d->x0, d->y0, d->x1, d->y1);
+        d->spr = spr;
+        if (!spr)
+            continue;
+        d->x0 = (int16_t)x0;
+        d->y0 = (int16_t)y0;
+        d->x1 = (int16_t)x1;
+        d->y1 = (int16_t)y1;
+        d->type = u->type;
+        d->look = (uint8_t)look;
+        d->built = built;
+        d->depth = (uint16_t)(drawlist[k] >> 16);
+        mark_in(dirty, x0, y0, x1, y1);
+        redraw[k] = 1;
+    }
+    for (i = 0; i < drawn_hi; i++)
+        if (drawn[i].spr && drawn[i].seen != draw_no) {
+            mark_in(dirty, drawn[i].x0, drawn[i].y0, drawn[i].x1, drawn[i].y1);
+            drawn[i].spr = 0;
+        }
+    drawn_hi = hi;
+}
+
 /* Draws this frame's moving things on the composite, at battlefield
  * coordinates (y as on screen) */
 static void draw_battlefield(void) {
-    int i, n = 0;
+    int i, n = 0, grew;
     int x0 = camx - 96, x1 = camx + VIEW_W + 96, y0 = camy - 64, y1 = camy + VIEW_H + 128;
     uint32_t tt0 = HZ200;
-    comp_begin();
-    stage_hz[5] += HZ200 - tt0;
-    tt0 = HZ200;
-    gfx_stride = RING_STRIDE;
-    clipped = 0;
     for (i = 0; i < unit_hi && n < MAX_DRAW; i++) {
         const Unit* u = &units[i];
         int ux, uz;
@@ -1812,23 +1952,31 @@ static void draw_battlefield(void) {
         drawlist[n++] = (uint32_t)(uz + 64) << 16 | (uint32_t)i;
     }
     sort_draw(n);
-    for (i = 0; i < n; i++) {
-        const Unit* u = &units[drawlist[i] & 0xFFFF];
-        const UnitType* t = &unittypes[u->type];
-        int dir = t->ndirs == 16 ? ((u->heading + 2048) >> 12) & 15 : 0;
-        int sx = u->x >> FIX, sy = unit_draw_y(u);
-        const int16_t* spr = unit_frame(u->type, dir);
-        if (u->flags & UF_UNBUILT) {
-            comp_blit(BLIT_NANO, spr, sx, sy, built_of(u, 256));
-        } else {
-            /* a walking unit bobs a pixel as it goes */
-            if (u->speed && t->kind == UK_MOBILE && ((game_frames >> 1) & 1))
-                sy--;
-            comp_blit(BLIT_SPRITE, spr, sx, sy, 0);
-            if (u->paralyzed && (game_frames & 2))
-                comp_blit(BLIT_TINT, spr, sx, sy, C_WHITE);
-        }
+    ndraw = n;
+    /* the cells to draw again: where the background changed, where last
+     * frame's shots and effects were, and where units changed; then those
+     * of every unit that meets them, until none does */
+    for (i = 0; i < CELL_ROWS; i++) {
+        dirty[i] |= trans[i];
+        trans[i] = 0;
     }
+    units_changed(n);
+    do {
+        grew = 0;
+        for (i = 0; i < n; i++) {
+            const Drawn* d = &drawn[drawlist[i] & 0xFFFF];
+            if (!redraw[i] && d->spr && spread(dirty, d->x0, d->y0, d->x1, d->y1))
+                redraw[i] = grew = 1;
+        }
+    } while (grew);
+    comp_restore();
+    stage_hz[5] += HZ200 - tt0;
+    tt0 = HZ200;
+    gfx_stride = RING_STRIDE;
+    clipped = 0;
+    for (i = 0; i < n; i++)
+        if (redraw[i])
+            draw_unit(&drawn[drawlist[i] & 0xFFFF]);
     stage_hz[6] += HZ200 - tt0;
     /* nanolathe sprays */
     for (i = 0; i < unit_hi; i++) {
@@ -1965,6 +2113,7 @@ static void draw_battlefield(void) {
         mark(vx + 140, vy + 150, vx + 400, vy + 210);
     }
     gfx_stride = LINE_BYTES;
+    comp_marks();
 }
 
 static void draw_cursor(uint8_t* scr) {
@@ -2082,17 +2231,14 @@ static void erase_cursor(uint8_t* scr) {
 
 uint32_t stage_hz[7];
 
-/* Checks: group rows of the composite that differ from the background outside
- * this frame's marks, and group rows of the front screen that differ from the
- * view the composite holds */
-/* Counts the group rows where two rings differ, leaving out this frame's
- * marked cells when asked; first gets the first, as row * 1000 + column */
-static int ring_diff(const uint8_t* a, const uint8_t* b, int skip_marked, int* first) {
+/* Counts the group rows where two rings differ, leaving out the cells
+ * marked in skip, if any; first gets the first, as row * 1000 + column */
+static int ring_diff(const uint8_t* a, const uint8_t* b, const uint32_t* skip, int* first) {
     int y, c, n = 0;
     *first = -1;
     for (y = 0; y < RING_H; y++)
         for (c = 0; c < RING_G; c++)
-            if (!(skip_marked && marks[mark_cur][y >> 4][c]) &&
+            if (!(skip && (skip[y >> 4] >> c & 1)) &&
                 memcmp(a + y * RING_STRIDE + c * 8, b + y * RING_STRIDE + c * 8, 8)) {
                 if (*first < 0)
                     *first = y * 1000 + c;
@@ -2101,10 +2247,33 @@ static int ring_diff(const uint8_t* a, const uint8_t* b, int skip_marked, int* f
     return n;
 }
 
+/* Checks: group rows of the composite that differ from the background with
+ * the units drawn on it afresh, outside what the last frame drew over them;
+ * group rows of the front screen that differ from the view the composite
+ * holds; and group rows of the background that differ from the same drawn
+ * afresh */
 void game_check_layers(void) {
-    int y, c, bad_comp, bad_scr = 0, first_c, first_s = -1;
+    int y, c, bad_comp = -1, bad_scr = 0, first_c = -1, first_s = -1;
     uint32_t want[VIEW_COLS * 2];
-    bad_comp = ring_diff(comp, bg, 1, &first_c);
+    uint8_t* fresh = tt_alloc_any((int32_t)RING_STRIDE * RING_H);
+    if (fresh) {
+        uint8_t* kept = comp;
+        int i;
+        memcpy(fresh, bg, (size_t)RING_STRIDE * RING_H);
+        comp = fresh;
+        gfx_stride = RING_STRIDE;
+        clipped = 0;
+        for (i = 0; i < ndraw; i++) {
+            const Drawn* d = &drawn[drawlist[i] & 0xFFFF];
+            if (d->spr)
+                draw_unit(d);
+        }
+        gfx_stride = LINE_BYTES;
+        clipped = 0;
+        comp = kept;
+        bad_comp = ring_diff(comp, fresh, trans, &first_c);
+        tt_free(fresh);
+    }
     for (y = 0; y < VIEW_H; y++) {
         const uint8_t* f = tt_front + (VIEW_Y + y) * LINE_BYTES + VIEW_X / 2;
         view_row(want, comp + ring_mod(camy + y, RING_H) * RING_STRIDE, ring_mod(camx >> 4, RING_G), VIEW_COLS);
@@ -2116,7 +2285,7 @@ void game_check_layers(void) {
             }
     }
     test_log(
-        "check: composite differs from background in %d group rows (first row %d col %d); screen "
+        "check: composite differs from a fresh drawing in %d group rows (first row %d col %d); screen "
         "differs from composite in %d (first row %d col %d)",
         bad_comp,
         first_c / 1000,
@@ -2507,6 +2676,10 @@ int game_run(int difficulty) {
     set_pieces();
     mark_cur = 0;
     memset(marks, 0, sizeof marks);
+    memset(dirty, 0, sizeof dirty);
+    memset(trans, 0, sizeof trans);
+    memset(drawn, 0, sizeof drawn);
+    drawn_hi = ndraw = 0;
     last = HZ200;
     for (;;) {
         uint32_t now, t0;

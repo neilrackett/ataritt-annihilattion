@@ -75,9 +75,11 @@ the battlefield always sits at the same spot in them (its position modulo
 their size), so when the view scrolls only the strips that come into it are
 drawn, and nothing already there is moved; the area round a feature that
 comes or goes is drawn again the same way. Drawing on the composite splits
-whatever crosses the rings' seams. Each of the three screens in ST-RAM
-copies only the 16x16 cells that changed since it was last shown, or the
-whole view after a scroll. The view moves across in 16-pixel steps, as the
+whatever crosses the rings' seams. A unit that looks the same as in the
+last frame, in the same place, stays on the composite: only the 16x16 cells
+where something changed are drawn again, with the units under and over
+them. Each of the three screens in ST-RAM copies only the cells that
+changed since it was last shown, or the whole view after a scroll. The view moves across in 16-pixel steps, as the
 screen's planes are copied a group of 16 pixels at a time, and down by the
 pixel. The interface round the battlefield is drawn into a buffer of its own,
 a part at a time when what that part shows changes, and the screens copy

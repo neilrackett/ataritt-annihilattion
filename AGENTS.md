@@ -94,9 +94,10 @@ same:
 - Battle screenshots must stay pixel-identical: run the same script with
   both builds (`PRG=build/old/dist/ANNIHILA.TOS`) and compare the PNGs.
 - The `check` command logs where the composite differs from the background
-  and the screen from the composite. Outside what a frame drew, both must be
-  0; the screen may differ only under the pointer. Run it at awkward camera
-  positions, so the rings' seams cross the view.
+  with the units drawn on it afresh, and the screen from the composite.
+  Outside what the frame drew over the units (shots, effects, boxes), the
+  first must be 0; the screen may differ only under the pointer. Run it at
+  awkward camera positions, so the rings' seams cross the view.
 
 **Timing**: `stats` logs the draw and simulation milliseconds and each
 stage's share; `fps1`, `fps3`, `scroll` and `battle` are the ones to watch.
@@ -125,10 +126,18 @@ stage's share; `fps1`, `fps3`, `scroll` and `battle` are the ones to watch.
   lies in one piece, or clipped into each piece it meets, and it remembers
   the piece the clip is set to. Add new composite drawing through the
   `comp_*` helpers, not straight to `gfx_*`.
-- **Marks.** Changed 16x16 ring cells are marked each frame (`mark()`; a
-  `comp_blit()` marks its own sprite). `comp_begin()` restores last frame's
-  cells from the background, and each screen copies the union of the last
-  frames' marks, or the whole view after the camera moves.
+- **Marks.** A unit that draws the same as last frame stays on the
+  composite (`drawn[]`: its sprite, box, look and place in the order, as it
+  can change places without moving). The cells to draw again, a bit each
+  in `dirty`, are where the background changed, where last frame's shots,
+  effects and boxes went (`mark()`, a `comp_blit()` marks its own) and the
+  old and new boxes of units that changed. Every unit that meets them adds
+  its whole box, until none does, so that what lies under and over is drawn
+  again in order. `comp_restore()` takes those cells from the background,
+  their units are drawn, and the rest goes over them. Each screen copies
+  the union of the last frames' changes (`comp_marks()`), or the whole view
+  after the camera moves. Anything new drawn on the composite that is not a
+  unit is drawn after the units, and marked.
 - **The interface draws only what changed**, into `ui`, and each screen
   copies the parts it lacks. The bars are three parts (metal, energy and
   the line below the battlefield), each with its own key and box. The

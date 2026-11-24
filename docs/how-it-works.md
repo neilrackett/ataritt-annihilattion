@@ -79,7 +79,10 @@ whatever crosses the rings' seams. A unit that looks the same as in the
 last frame, in the same place, stays on the composite: only the 16x16 cells
 where something changed are drawn again, with the units under and over
 them. Each of the three screens in ST-RAM copies only the cells that
-changed since it was last shown, or the whole view after a scroll. The view moves across in 16-pixel steps, as the
+changed since it was last drawn, or the whole view after a scroll. The
+screens come round in turn: a frame drawn in less than the time between
+two vertical blanks waits for the next, as its screen would otherwise
+never be seen. The view moves across in 16-pixel steps, as the
 screen's planes are copied a group of 16 pixels at a time, and down by the
 pixel. The interface round the battlefield is drawn into a buffer of its own,
 a part at a time when what that part shows changes, and the screens copy

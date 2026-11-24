@@ -63,7 +63,7 @@ uint8_t* tt_screens[NSCREENS];
 int tt_plays_6258;
 static int falcon;                /* a Falcon, not a TT: an experiment, see the README */
 static uint32_t set_at[NSCREENS]; /* the blank count when each was last made the base */
-static int latest, shown;         /* the base last set, and the screen surely on show */
+static int latest;                /* the base last set */
 static uint32_t old_cacr;
 static uint16_t shown_palette[16]; /* the colours on show */
 static uint16_t next_palette[16];  /* tt_set_palette()'s, for the next tt_flip() */
@@ -351,13 +351,10 @@ void tt_get_palette(uint16_t* pal) {
 }
 
 void tt_flip(void) {
-    int i, b = 0;
+    int i, b = 0, on_show = latest;
     for (i = 0; i < NSCREENS; i++)
         if (tt_screens[i] == tt_back)
             b = i;
-    /* a blank since the last base was set means that one is on show now */
-    if (VBLCLOCK > set_at[latest])
-        shown = latest;
     if (palette_waits) {
         /* new colours come with the screen drawn for them: black from one
          * blank, as the new base is set, and the colours from the next,
@@ -371,13 +368,19 @@ void tt_flip(void) {
         set_colours(next_palette, 16);
         memcpy(shown_palette, next_palette, sizeof shown_palette);
         palette_waits = 0;
-    } else
+    } else {
+        /* a base replaced before a blank takes it up is never seen: wait for
+         * the blank instead, so that the last base is on show, every screen
+         * drawn is seen, and the screens come round in turn */
+        while (VBLCLOCK == set_at[latest])
+            ;
         set_base(tt_back);
+    }
     set_at[b] = VBLCLOCK;
     latest = b;
     tt_front = tt_back;
     for (i = 0; i < NSCREENS; i++)
-        if (i != latest && i != shown)
+        if (i != b && i != on_show)
             break;
     tt_back = tt_screens[i];
 }
@@ -436,7 +439,7 @@ int tt_init(void) {
     }
     tt_front = tt_screens[0];
     tt_back = tt_screens[1];
-    latest = shown = 0;
+    latest = 0;
     old_ssp = Super(0L);
     __asm__ __volatile__("movec %%cacr,%0" : "=d"(old_cacr));
     if (falcon)

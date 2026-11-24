@@ -55,13 +55,16 @@ int tt_shift(void);
 
 /* Three screens in ST-RAM: draw into tt_back, then tt_flip() shows it from
  * the next vertical blank and hands back a screen that is neither shown nor
- * waiting to be, so drawing never waits for the blank */
+ * waiting to be, so drawing waits for a blank only when a frame took less
+ * time than one. The screens come round in turn. */
 #define NSCREENS 3
 extern uint8_t *tt_back, *tt_front;
 extern uint8_t* tt_screens[NSCREENS];
 
 /// Shows tt_back from the next vertical blank, makes it tt_front, and sets
-/// tt_back to a screen neither shown nor waiting to be.
+/// tt_back to a screen neither shown nor waiting to be. When no blank came
+/// since the last flip, it waits for one first, as the screen that flip set
+/// would never be seen.
 void tt_flip(void);
 
 /// Sets the 16 colours, from the next tt_flip(): they change with the

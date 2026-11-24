@@ -689,7 +689,9 @@ static void draw_side_panel(uint8_t* scr) {
 #define VIEW_COLS (VIEW_W / 16)
 #define VIEW_ROWS (VIEW_H / 16)
 
-#define NMARKS (NSCREENS + 1)
+/* tt_flip() hands the screens out in turn, so each is drawn again every
+ * NSCREENS frames: the composite's marks are kept for that many */
+#define NMARKS NSCREENS
 
 /* The bars' parts: metal and energy above the battlefield, and the line below it */
 enum { BAR_METAL, BAR_ENERGY, BAR_INFO, NBARS };
@@ -1424,22 +1426,27 @@ static void copy_view(uint8_t* scr, int y0, int y1, int k0, int k1) {
 
 /* Copies to the screen what changed in the composite since it was last copied there */
 static void comp_to_screen(uint8_t* scr) {
-    int r, k, g0 = camx >> 4;
-    if (S->cam_x != camx || S->cam_y != camy || game_frames - S->last_frame >= NMARKS) {
+    int r, k, g0 = camx >> 4, age = (int)(game_frames - S->last_frame);
+    if (S->cam_x != camx || S->cam_y != camy || age < 1 || age > NMARKS) {
         S->cam_x = camx;
         S->cam_y = camy;
         copy_view(scr, 0, VIEW_H - 1, 0, VIEW_COLS - 1);
     } else {
         /* the battlefield's cells in view that a frame since marked: screen
          * group j shows the battlefield's group g0 + j, ring column cg + j */
-        int rr = ring_mod(camy >> 4, CELL_ROWS), cg = ring_mod(g0, RING_G);
+        int rr = ring_mod(camy >> 4, CELL_ROWS), cg = ring_mod(g0, RING_G), i, m = mark_cur;
+        uint32_t since[CELL_ROWS]; /* the cells marked since this screen was drawn */
+        memcpy(since, marks[m], sizeof since);
+        for (i = 1; i < age; i++) {
+            m = m ? m - 1 : NMARKS - 1;
+            for (r = 0; r < CELL_ROWS; r++)
+                since[r] |= marks[m][r];
+        }
         for (r = camy >> 4; r <= (camy + VIEW_H - 1) >> 4; r++, rr = rr + 1 < CELL_ROWS ? rr + 1 : 0) {
             int y0 = r * 16 > camy ? r * 16 - camy : 0;
             int y1 = r * 16 + 15 < camy + VIEW_H - 1 ? r * 16 + 15 - camy : VIEW_H - 1;
-            int i, j = 0;
-            uint32_t v = 0;
-            for (i = 0; i < NMARKS; i++)
-                v |= marks[i][rr];
+            int j = 0;
+            uint32_t v = since[rr];
             if (cg)
                 v = v >> cg | v << (32 - cg); /* bit j for screen group j */
             while (v) {

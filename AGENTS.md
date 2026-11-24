@@ -135,9 +135,14 @@ stage's share; `fps1`, `fps3`, `scroll` and `battle` are the ones to watch.
   its whole box, until none does, so that what lies under and over is drawn
   again in order. `comp_restore()` takes those cells from the background,
   their units are drawn, and the rest goes over them. Each screen copies
-  the union of the last frames' changes (`comp_marks()`), or the whole view
-  after the camera moves. Anything new drawn on the composite that is not a
-  unit is drawn after the units, and marked.
+  the cells marked since it was last drawn (`comp_marks()` keeps three
+  frames'), or the whole view after the camera moves. That holds because
+  `tt_flip()` waits for a blank when a frame took less than one. Without
+  the wait, the next frame replaced the last screen before it was seen,
+  the screen on show stayed there, and when it came round again its marks
+  were gone, so it copied the whole view: a faster simulation made the
+  drawing slower. Anything new drawn on the composite that is not a unit
+  is drawn after the units, and marked.
 - **The interface draws only what changed**, into `ui`, and each screen
   copies the parts it lacks. The bars are three parts (metal, energy and
   the line below the battlefield), each with its own key and box. The

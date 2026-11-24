@@ -79,8 +79,9 @@ whatever crosses the rings' seams. Each of the three screens in ST-RAM
 copies only the 16x16 cells that changed since it was last shown, or the
 whole view after a scroll. The view moves across in 16-pixel steps, as the
 screen's planes are copied a group of 16 pixels at a time, and down by the
-pixel. The interface round the battlefield is drawn into a buffer of its own
-when it changes.
+pixel. The interface round the battlefield is drawn into a buffer of its own,
+a part at a time when what that part shows changes, and the screens copy
+only the parts they lack: of the minimap, only the rows that changed.
 
 The full game has too many unit types to hold all their sprites: a late
 mission may build 150 of them, at 15 to 40 KB each. They are read from the

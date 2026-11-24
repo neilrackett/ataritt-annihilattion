@@ -250,39 +250,49 @@ int gfx_text_width(const char* s) {
     return w;
 }
 
-static void glyph_row(uint8_t* scr, uint16_t bits, int left, int yy, int colour) {
-    int s = left & 15, gx = left >> 4, k;
-    for (k = 0; k < 2; k++) {
-        uint16_t m = k ? (uint16_t)(s ? bits << (16 - s) : 0) : (uint16_t)(bits >> s);
-        int dg = gx + k;
-        uint16_t* d;
-        if (!m || dg < cg0 || dg > cg1)
-            continue;
-        if (dg == cg0 && (cx0 & 15))
-            m &= (uint16_t)(0xFFFF >> (cx0 & 15));
-        d = (uint16_t*)(scr + yy * gfx_stride) + dg * 4;
-        PUT_COLOUR(d, m, colour);
-    }
+/* The clip's mask for the pixels of group g: none outside it, and only those
+ * right of the clip's edge in its first group */
+static uint16_t clip_mask(int g) {
+    if (g < cg0 || g > cg1)
+        return 0;
+    return g == cg0 ? (uint16_t)(0xFFFF >> (cx0 & 15)) : 0xFFFF;
 }
 
-/* Glyph rows are two words: the letter, then its dark outline */
-static void draw_glyph(uint8_t* scr, const int8_t* g, int x, int y, int colour) {
-    int h = g[1], r;
-    const uint8_t* rows = (const uint8_t*)(g + 4);
-    int top = y - g[3], left = x - g[2];
-    for (r = 0; r < h; r++, rows += 4) {
-        int yy = top + r;
-        if (yy < cy0 || yy > cy1)
-            continue;
-        glyph_row(scr, (uint16_t)(rows[2] << 8 | rows[3]), left, yy, 0);
-        glyph_row(scr, (uint16_t)(rows[0] << 8 | rows[1]), left, yy, colour);
+/* Glyph rows are two words: the letter, then its dark outline. The outline is
+ * colour 0 and the letter is drawn over it, together in one write a group.
+ * planes holds each plane's word for the colour: all ones or none. */
+static void draw_glyph(uint8_t* scr, const int8_t* g, int x, int y, const uint16_t* planes) {
+    int h = g[1], top = y - g[3], left = x - g[2], s = 16 - (left & 15), gx = left >> 4;
+    int r = top < cy0 ? cy0 - top : 0, r1 = top + h - 1 > cy1 ? cy1 - top + 1 : h;
+    uint16_t c0 = clip_mask(gx), c1 = clip_mask(gx + 1);
+    const uint8_t* rows = (const uint8_t*)(g + 4) + r * 4;
+    uint8_t* row;
+    if (r >= r1 || !(c0 | c1))
+        return;
+    row = scr + (top + r) * gfx_stride;
+    for (; r < r1; r++, rows += 4, row += gfx_stride) {
+        /* the row across two groups: gx in the high word, gx + 1 in the low */
+        uint32_t l = (uint32_t)(rows[0] << 8 | rows[1]) << s;
+        uint32_t m = l | (uint32_t)(rows[2] << 8 | rows[3]) << s;
+        uint16_t m0 = (uint16_t)(m >> 16) & c0, m1 = (uint16_t)m & c1;
+        if (m0) {
+            uint16_t *d = (uint16_t*)row + gx * 4, l0 = (uint16_t)(l >> 16);
+            PUT(d, m0, l0 & m0 & planes[0], l0 & m0 & planes[1], l0 & m0 & planes[2], l0 & m0 & planes[3]);
+        }
+        if (m1) {
+            uint16_t *d = (uint16_t*)row + gx * 4 + 4, l1 = (uint16_t)l;
+            PUT(d, m1, l1 & m1 & planes[0], l1 & m1 & planes[1], l1 & m1 & planes[2], l1 & m1 & planes[3]);
+        }
     }
 }
 
 int gfx_text(uint8_t* scr, int x, int y, const char* s, int colour) {
-    int x0 = x;
+    int x0 = x, p;
+    uint16_t planes[4];
     if (!font)
         return 0;
+    for (p = 0; p < 4; p++)
+        planes[p] = (colour >> p) & 1 ? 0xFFFF : 0;
     for (; *s; s++) {
         unsigned char c = (unsigned char)*s;
         const int8_t* g;
@@ -290,7 +300,7 @@ int gfx_text(uint8_t* scr, int x, int y, const char* s, int colour) {
             continue;
         g = glyph(c);
         if (c != 32)
-            draw_glyph(scr, g, x, y, colour);
+            draw_glyph(scr, g, x, y, planes);
         x += g[0];
     }
     return x - x0;

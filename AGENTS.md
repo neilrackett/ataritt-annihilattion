@@ -129,15 +129,25 @@ stage's share; `fps1`, `fps3`, `scroll` and `battle` are the ones to watch.
   `comp_blit()` marks its own sprite). `comp_begin()` restores last frame's
   cells from the background, and each screen copies the union of the last
   frames' marks, or the whole view after the camera moves.
+- **The interface draws only what changed**, into `ui`, and each screen
+  copies the parts it lacks. The bars are three parts (metal, energy and
+  the line below the battlefield), each with its own key and box. The
+  minimap remembers each unit's dot and the view's box, and draws and
+  copies only the rows where one of them, or what is explored, changed.
+  Comparing each drawing with the last instead cost as much as the copies
+  it saved, as it read 16 KB of TT-RAM every time.
 - **Copy loops.** GCC turns simple copy loops into `memcpy` calls, which cost
   more than they save on short runs. Inlined into a big function, its loops
   spill pointers to the stack. `copy_run()` is a small assembly loop (two
-  `move.l` and a `dbra`) for that reason. Look at the object code
-  (`m68k-atari-mintelf-objdump -d build/game.o`) before trusting a loop.
-- **DMA sound reads only ST-RAM.** The narration is too long to keep there
-  at 12517 Hz, so it loads into TT-RAM and `snd_stream()` plays it through a
-  64 KB ring in ST-RAM. The briefing's loop calls `snd_stream_update()`,
-  which refills the half that isn't playing.
+  `move.l` and a `dbra`) for that reason. The mixer's inner loops
+  (`put_samples()` and those after it) are assembly too: GCC's took more
+  than twice the instructions, and the mixer twice the time. Look at the
+  object code (`m68k-atari-mintelf-objdump -d build/game.o`) before
+  trusting a loop.
+- **DMA sound reads only ST-RAM.** The narration and the music are too long
+  to keep there at 12517 Hz, so `snd_stream_file()` reads them from the disk
+  as they play into a 64 KB ring in any RAM, and the mixer takes them from
+  there into the 8 KB ring the DMA plays.
 - **The explored map.** It is kept in 32x32 sight cells, and the fog tiles
   lie 16 pixels off them, so each 16x16 group cell is one quarter of a tile
   and the masks stay on whole groups. Explore after each `sim_tick()`, not

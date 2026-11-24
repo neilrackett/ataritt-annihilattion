@@ -152,6 +152,68 @@ int snd_stream_busy(void) {
     return sfh >= 0 && !(s_eof && s_read >= s_written);
 }
 
+/* The mixer's inner loops, each for n > 0 samples: GCC's take half as many
+ * instructions again, and three times as many for a 6258 Hz sound */
+
+/* a[i] = s[i], or s[i] >> 1 when halved */
+static inline void put_samples(int16_t* a, const int8_t* s, int n, int halved) {
+    if (halved)
+        __asm__ volatile("subq.w #1,%2\n"
+                         "1:\tmove.b (%1)+,%%d0\n\t"
+                         "asr.b #1,%%d0\n\t"
+                         "ext.w %%d0\n\t"
+                         "move.w %%d0,(%0)+\n\t"
+                         "dbra %2,1b"
+                         : "+a"(a), "+a"(s), "+d"(n)
+                         :
+                         : "d0", "memory");
+    else
+        __asm__ volatile("subq.w #1,%2\n"
+                         "1:\tmove.b (%1)+,%%d0\n\t"
+                         "ext.w %%d0\n\t"
+                         "move.w %%d0,(%0)+\n\t"
+                         "dbra %2,1b"
+                         : "+a"(a), "+a"(s), "+d"(n)
+                         :
+                         : "d0", "memory");
+}
+
+/* a[i] += s[i] */
+static inline void add_samples(int16_t* a, const int8_t* s, int n) {
+    __asm__ volatile("subq.w #1,%2\n"
+                     "1:\tmove.b (%1)+,%%d0\n\t"
+                     "ext.w %%d0\n\t"
+                     "add.w %%d0,(%0)+\n\t"
+                     "dbra %2,1b"
+                     : "+a"(a), "+a"(s), "+d"(n)
+                     :
+                     : "d0", "memory");
+}
+
+/* a[2i] += s[i] and a[2i + 1] += s[i], for n pairs */
+static inline void add_doubled(int16_t* a, const int8_t* s, int n) {
+    __asm__ volatile("subq.w #1,%2\n"
+                     "1:\tmove.b (%1)+,%%d0\n\t"
+                     "ext.w %%d0\n\t"
+                     "add.w %%d0,(%0)+\n\t"
+                     "add.w %%d0,(%0)+\n\t"
+                     "dbra %2,1b"
+                     : "+a"(a), "+a"(s), "+d"(n)
+                     :
+                     : "d0", "memory");
+}
+
+/* d[i] = t[a[i]]: t is clamp_tab's middle */
+static inline void clamp_samples(int8_t* d, const int16_t* a, const int8_t* t, int n) {
+    __asm__ volatile("subq.w #1,%2\n"
+                     "1:\tmove.w (%1)+,%%d0\n\t"
+                     "move.b (%3,%%d0.w),(%0)+\n\t"
+                     "dbra %2,1b"
+                     : "+a"(d), "+a"(a), "+d"(n)
+                     : "a"(t)
+                     : "d0", "memory");
+}
+
 /* Mixes n samples (n <= CHUNK) into the ring from fill on, wrapping. The
  * stream and four effects sum to within -640..639, inside clamp_tab. */
 static void mix(int n) {
@@ -166,14 +228,7 @@ static void mix(int n) {
         while (done < m) {
             int32_t r = s_read & (SBUF - 1);
             int run = m - done < SBUF - r ? m - done : (int)(SBUF - r);
-            const int8_t* sp = sbuf + r;
-            int16_t* ap = acc + done;
-            if (s_half_volume)
-                for (i = 0; i < run; i++)
-                    ap[i] = (int16_t)(sp[i] >> 1);
-            else
-                for (i = 0; i < run; i++)
-                    ap[i] = sp[i];
+            put_samples(acc + done, sbuf + r, run, s_half_volume);
             s_read += run;
             done += run;
         }
@@ -195,22 +250,33 @@ static void mix(int n) {
         p = c->p;
         if (!c->half) {
             int m = c->left < n ? (int)c->left : n;
-            for (i = 0; i < m; i++)
-                acc[i] += p[i];
+            add_samples(acc, p, m);
             c->p += m;
             c->left -= m;
         } else {
-            int odd = c->odd;
-            for (i = 0; i < n && c->left > 0; i++) {
+            /* each sample twice: once more if it has been once already,
+             * then in pairs, then the first of the next pair */
+            int pairs;
+            i = 0;
+            if (c->odd) {
+                acc[i++] += *p++;
+                c->left--;
+                c->odd = 0;
+            }
+            pairs = (n - i) >> 1;
+            if (pairs > c->left)
+                pairs = (int)c->left;
+            if (pairs > 0) {
+                add_doubled(acc + i, p, pairs);
+                i += pairs * 2;
+                p += pairs;
+                c->left -= pairs;
+            }
+            if (i < n && c->left > 0) {
                 acc[i] += *p;
-                if (odd) {
-                    p++;
-                    c->left--;
-                }
-                odd ^= 1;
+                c->odd = 1;
             }
             c->p = p;
-            c->odd = (uint8_t)odd;
         }
     }
     /* into the ring, in two runs at most */
@@ -221,10 +287,10 @@ static void mix(int n) {
         memset(ring, 0, (size_t)(n - first));
     } else {
         const int8_t* ct = clamp_tab + 1024;
-        for (i = 0; i < first; i++)
-            d[i] = ct[acc[i]];
-        for (; i < n; i++)
-            ring[i - first] = ct[acc[i]];
+        if (first > 0)
+            clamp_samples(d, acc, ct, first);
+        if (n > first)
+            clamp_samples(ring, acc + first, ct, n - first);
     }
     fill = (fill + n) & (RING - 1);
 }

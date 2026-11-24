@@ -691,11 +691,14 @@ static void draw_side_panel(uint8_t* scr) {
 
 #define NMARKS (NSCREENS + 1)
 
+/* The bars' parts: metal and energy above the battlefield, and the line below it */
+enum { BAR_METAL, BAR_ENERGY, BAR_INFO, NBARS };
+
 typedef struct {
     uint8_t* scr;
-    int32_t last_frame;                           /* the frame it was last drawn in */
-    int32_t side_serial, bar_serial, mini_serial; /* the versions of ui's parts it shows */
-    int cam_x, cam_y;                             /* the view it shows; -1 for none */
+    int32_t last_frame;                                  /* the frame it was last drawn in */
+    int32_t side_serial, bar_serial[NBARS], mini_serial; /* the versions of ui's parts it shows */
+    int cam_x, cam_y;                                    /* the view it shows; -1 for none */
     int panel_ok;
     int cur_x0, cur_y0, cur_x1, cur_y1;
     uint8_t extra[VIEW_ROWS][VIEW_COLS] __attribute__((aligned(4))); /* cells its own pointer covered */
@@ -1462,31 +1465,46 @@ static int hover_pic(void) {
     return build_option(mu, ((y - PIC_Y) / 64) * 2 + (x >= 64));
 }
 
-static uint32_t bars_key(void) {
+/* The bars' parts (BAR_METAL ...), the last about the unit under the pointer
+ * or selected, and messages. Each is drawn into ui, and copied to the
+ * screens, only when what it shows changes; the boxes are whole groups, so
+ * that text clips cleanly at their edges. */
+static const struct {
+    int16_t x0, y0, x1, y1;
+} bar_box[NBARS] = {
+    {208, 0, 399, VIEW_Y - 1},
+    {464, 0, SCREEN_W - 1, VIEW_Y - 1},
+    {VIEW_X, VIEW_Y + VIEW_H, SCREEN_W - 1, SCREEN_H - 1},
+};
+
+static uint32_t bar_key(int part) {
     const Player* p = &players[PLAYER];
-    uint32_t k = (uint32_t)(p->metal >> 8) * 31 + (uint32_t)(p->energy >> 8) * 17 +
-                 (uint32_t)p->mstore * 7 + (uint32_t)p->estore * 13 + (uint32_t)p->mincome * 3 +
-                 (uint32_t)p->eincome * 5;
-    int h = hover_unit(), sel = -1;
+    uint32_t k;
+    int h, sel = -1;
+    if (part == BAR_METAL)
+        return (uint32_t)(p->metal >> 8) * 31 + (uint32_t)p->mstore * 7 + (uint32_t)p->mincome * 3;
+    if (part == BAR_ENERGY)
+        return (uint32_t)(p->energy >> 8) * 31 + (uint32_t)p->estore * 7 + (uint32_t)p->eincome * 3;
+    h = hover_unit();
     if (h >= 0)
         sel = h;
     else if (nselected)
         selected(SEL_ALL, &sel);
-    k = k * 33 + (uint32_t)(sel + 1) * 1009 + (uint32_t)nselected * 77;
-    if (sel >= 0)
-        k += (uint32_t)units[sel].hp * 3 + (units[sel].progress >> 6) + units[sel].paralyzed;
+    k = (uint32_t)(sel + 1) * 1009 + (uint32_t)nselected * 77 + (h >= 0);
+    if (sel >= 0) {
+        const Unit* u = &units[sel];
+        k += (uint32_t)u->hp * 3 + u->paralyzed + (uint32_t)u->owner * 8191 +
+             (u->flags & UF_UNBUILT ? (uint32_t)built_of(u, 100) * 5 + 4099 : 0);
+    }
     k += (sim_tick_count - sim_message_tick < TICKS * 4) ? (uint32_t)sim_message_tick : 0;
     k += (uint32_t)(hover_pic() + 2) * 7919;
     return k;
 }
 
-static void draw_bars(uint8_t* scr) {
-    const Player* p = &players[PLAYER];
+/* The line below the battlefield */
+static void draw_info(uint8_t* scr) {
     char s[96];
     int sel = -1, hover;
-    gfx_clip_full();
-    draw_resource(scr, 212, p->metal, p->mstore, p->mincome, C_SILVER);
-    draw_resource(scr, 466, p->energy, p->estore, p->eincome, C_YELLOW);
     hover = hover_unit();
     if (hover >= 0)
         sel = hover;
@@ -1536,6 +1554,19 @@ static void draw_bars(uint8_t* scr) {
         gfx_text(scr, 420, 464, sim_message, C_YELLOW);
 }
 
+/* A part of the bars, clipped to its box */
+static void draw_bar(uint8_t* scr, int part) {
+    const Player* p = &players[PLAYER];
+    gfx_clip(bar_box[part].x0, bar_box[part].y0, bar_box[part].x1, bar_box[part].y1);
+    if (part == BAR_METAL)
+        draw_resource(scr, 212, p->metal, p->mstore, p->mincome, C_SILVER);
+    else if (part == BAR_ENERGY)
+        draw_resource(scr, 466, p->energy, p->estore, p->eincome, C_YELLOW);
+    else
+        draw_info(scr);
+    gfx_clip_full();
+}
+
 static uint32_t side_key(void) {
     int mu = menu_unit(), i;
     uint32_t k = (uint32_t)page * 7 + (uint32_t)mode * 131 + (uint32_t)(build_type + 1) * 1031 +
@@ -1554,6 +1585,15 @@ static uint32_t side_key(void) {
 static uint16_t* mini;
 static uint16_t mini_cx[128], mini_cy[128]; /* the sight cell under the minimap's each column and row */
 
+/* What the minimap last showed, to draw again only the rows that change: each
+ * unit's dot (0 for none, else 1 << 31, whether it is selected, its colour,
+ * row and column), and the view's box */
+static uint32_t mini_dot[MAX_UNITS];
+static int mini_hi, mini_box[4];
+static uint8_t mini_redraw[128]; /* ui's rows to draw again */
+static int32_t mini_serial;      /* the minimap's version in ui */
+static int32_t mini_row[128];    /* the version in which each of ui's first 128 rows last changed */
+
 static void mini_start(void) {
     int i;
     for (i = 0; i < mission.mw && i < 128; i++)
@@ -1562,6 +1602,10 @@ static void mini_start(void) {
         mini_cy[i] = (uint16_t)(((2 * i + 1) * maph / (2 * mission.mh)) >> EX_SHIFT);
     memset(mini_dirty, 1, (size_t)ex_h);
     mini_any = 1;
+    memset(mini_dot, 0, sizeof mini_dot);
+    memset(mini_row, 0, sizeof mini_row);
+    mini_hi = 0;
+    memset(mini_box, 0xFF, sizeof mini_box);
 }
 
 /* Brings the minimap's rows over the cell rows explored since up to date;
@@ -1575,6 +1619,7 @@ static void mini_update(void) {
         int cy = mini_cy[y];
         if (!mini_dirty[cy])
             continue;
+        mini_redraw[minimap_oy + y] = 1;
         if (cy != last) {
             const uint8_t* e = explored + cy * ex_stride;
             last = cy;
@@ -1597,35 +1642,97 @@ static void mini_update(void) {
     mini_any = 0;
 }
 
-static void draw_minimap(uint8_t* scr) {
-    int i;
-    int ox = minimap_ox, oy = minimap_oy;
+/* A unit's dot on the minimap, as mini_dot holds it */
+static uint32_t mini_dot_of(const Unit* u) {
+    uint32_t x, y;
+    if (!u->alive || (!unit_shown(u) && !(u->flags & UF_ON_RADAR)))
+        return 0;
+    x = (uint32_t)(minimap_ox + (int)((u->x >> FIX) * mission.mw / mapw)) & 0x3FF;
+    y = (uint32_t)(minimap_oy + (int)((u->z >> FIX) * mission.mh / maph)) & 0x3FF;
+    return 0x80000000UL | (uint32_t)((u->flags & UF_SELECTED) != 0) << 24 |
+           (uint32_t)(unittypes[u->type].side ? C_RED : C_BLUE) << 20 | y << 10 | x;
+}
+
+/* Marks ui's rows y0..y1 to draw again, those in the minimap */
+static void mini_mark(int y0, int y1) {
+    if (y0 < minimap_oy)
+        y0 = minimap_oy;
+    if (y1 > minimap_oy + mission.mh - 1)
+        y1 = minimap_oy + mission.mh - 1;
+    for (; y0 <= y1; y0++)
+        mini_redraw[y0] = 1;
+}
+
+/* Marks the rows a dot covers */
+static void mini_mark_dot(uint32_t d) {
+    int y = (int)(d >> 10 & 0x3FF);
+    if (d)
+        mini_mark(y, d >> 24 & 1 ? y + 1 : y);
+}
+
+/* Draws again the minimap's rows where a dot, the view's box or what is
+ * explored changed, as the whole would be drawn, and records them in
+ * mini_row; 0 if none did */
+static int draw_minimap(uint8_t* scr) {
+    int i, y, y0, ox = minimap_ox, oy = minimap_oy, groups = mission.mw / 16, hi;
+    int box[4];
+    box[0] = ox + camx * mission.mw / mapw;
+    box[1] = oy + camy * mission.mh / maph;
+    box[2] = ox + (camx + VIEW_W) * mission.mw / mapw - 1;
+    box[3] = oy + (camy + VIEW_H) * mission.mh / maph - 1;
     if (mini_any)
         mini_update();
-    gfx_image(scr, mini, ox, oy, mission.mw / 16, mission.mh);
+    if (memcmp(box, mini_box, sizeof box)) {
+        mini_mark(mini_box[1], mini_box[3]);
+        mini_mark(box[1], box[3]);
+        memcpy(mini_box, box, sizeof box);
+    }
+    hi = unit_hi > mini_hi ? unit_hi : mini_hi;
+    for (i = 0; i < hi; i++) {
+        uint32_t d = i < unit_hi ? mini_dot_of(&units[i]) : 0;
+        if (d != mini_dot[i]) {
+            mini_mark_dot(mini_dot[i]);
+            mini_mark_dot(d);
+            mini_dot[i] = d;
+        }
+    }
+    mini_hi = unit_hi;
+    for (y = oy; y < oy + mission.mh && !mini_redraw[y]; y++)
+        ;
+    if (y == oy + mission.mh)
+        return 0;
+    /* the terrain, a run of rows at a time, then the dots and the view's box */
+    for (y = oy; y < oy + mission.mh; y++) {
+        if (!mini_redraw[y])
+            continue;
+        for (y0 = y; y < oy + mission.mh && mini_redraw[y]; y++)
+            mini_row[y] = mini_serial + 1;
+        gfx_image(scr, mini + (y0 - oy) * groups * 4, ox, y0, groups, y - y0);
+    }
     gfx_clip(ox, oy, ox + mission.mw - 1, oy + mission.mh - 1);
     for (i = 0; i < unit_hi; i++) {
-        const Unit* u = &units[i];
-        int x, y;
-        if (!u->alive)
+        uint32_t d = mini_dot[i];
+        int x = (int)(d & 0x3FF), c = (int)(d >> 20 & 15);
+        if (!d)
             continue;
-        if (!unit_shown(u) && !(u->flags & UF_ON_RADAR))
-            continue;
-        x = ox + (int)((u->x >> FIX) * mission.mw / mapw);
-        y = oy + (int)((u->z >> FIX) * mission.mh / maph);
-        gfx_pixel(scr, x, y, unittypes[u->type].side ? C_RED : C_BLUE);
-        gfx_pixel(scr, x + 1, y, unittypes[u->type].side ? C_RED : C_BLUE);
-        if (u->flags & UF_SELECTED)
+        y = (int)(d >> 10 & 0x3FF);
+        if (y < 128 && mini_redraw[y]) {
+            gfx_pixel(scr, x, y, c);
+            gfx_pixel(scr, x + 1, y, c);
+        }
+        if (d >> 24 & 1 && y + 1 < 128 && mini_redraw[y + 1])
             gfx_pixel(scr, x, y + 1, C_WHITE);
     }
-    gfx_rect(
-        scr,
-        ox + camx * mission.mw / mapw,
-        oy + camy * mission.mh / maph,
-        ox + (camx + VIEW_W) * mission.mw / mapw - 1,
-        oy + (camy + VIEW_H) * mission.mh / maph - 1,
-        C_WHITE
-    );
+    for (y = oy; y < oy + mission.mh; y++) {
+        if (!mini_redraw[y])
+            continue;
+        for (y0 = y; y < oy + mission.mh && mini_redraw[y]; y++)
+            ;
+        gfx_clip(ox, y0, ox + mission.mw - 1, y - 1);
+        gfx_rect(scr, box[0], box[1], box[2], box[3], C_WHITE);
+    }
+    memset(mini_redraw, 0, sizeof mini_redraw);
+    return 1;
 }
 
 /* ------------------------------------------------------------ the battlefield */
@@ -1921,17 +2028,35 @@ static void restore_side(int y0, int y1) {
         memcpy(ui + y * LINE_BYTES, keep + y * 64, 64);
 }
 
-/* The bars above and below the battlefield put back in ui as loaded */
-static void restore_bars(void) {
-    int y;
-    for (y = 0; y < VIEW_Y; y++)
-        memcpy(ui + y * LINE_BYTES + 64, keep + KEEP_SIDE + y * 256, 256);
-    for (y = 0; y < SCREEN_H - VIEW_Y - VIEW_H; y++)
-        memcpy(ui + (VIEW_Y + VIEW_H + y) * LINE_BYTES + 64, keep + KEEP_SIDE + KEEP_BAR + y * 256, 256);
+/* A part of the bars put back in ui as loaded: keep holds the top bar's rows,
+ * then the bottom bar's, each from VIEW_X on */
+static void restore_bar(int part) {
+    int g = bar_box[part].x0 >> 4, n = ((bar_box[part].x1 >> 4) - g + 1) * 8, y;
+    for (y = bar_box[part].y0; y <= bar_box[part].y1; y++)
+        memcpy(
+            ui + y * LINE_BYTES + g * 8,
+            keep + KEEP_SIDE + (y < VIEW_Y ? y : y - VIEW_H) * 256 + (g - VIEW_X / 16) * 8,
+            n
+        );
 }
-static uint32_t ui_side_key, ui_bar_key;
+static uint32_t ui_side_key, ui_bar_key[NBARS];
 static int32_t ui_bar_frame, ui_mini_frame = -100;
-static int32_t side_serial, bar_serial, mini_serial;
+static int32_t side_serial, bar_serial[NBARS];
+
+/* Copies to the screen the minimap's rows that changed since it last had them */
+static void mini_to_screen(uint8_t* scr) {
+    int y = 0, y0;
+    while (y < 128) {
+        if (mini_row[y] <= S->mini_serial) {
+            y++;
+            continue;
+        }
+        for (y0 = y; y < 128 && mini_row[y] > S->mini_serial; y++)
+            ;
+        gfx_copy_rect(scr, ui, 0, y0, VIEW_X - 1, y - 1);
+    }
+    S->mini_serial = mini_serial;
+}
 
 /* Takes away last time's pointer outside the battlefield */
 static void erase_cursor(uint8_t* scr) {
@@ -2022,8 +2147,8 @@ void game_check_layers(void) {
 static void draw_frame(void) {
     uint8_t* scr = tt_back;
     uint32_t t = HZ200, t2, k;
+    int i;
     {
-        int i;
         S = &screens[0];
         for (i = 0; i < NSCREENS; i++)
             if (screens[i].scr == tt_back)
@@ -2033,7 +2158,8 @@ static void draw_frame(void) {
         memcpy(scr, ui, SCREEN_BYTES);
         S->panel_ok = 1;
         S->cam_x = -1;
-        S->side_serial = S->bar_serial = S->mini_serial = -1;
+        S->side_serial = S->mini_serial = -1;
+        memset(S->bar_serial, 0xFF, sizeof S->bar_serial);
         S->cur_x1 = S->cur_x0 - 1;
     }
     erase_cursor(scr);
@@ -2051,8 +2177,8 @@ static void draw_frame(void) {
     gfx_clip_full();
     if (game_frames - ui_mini_frame >= 6) {
         ui_mini_frame = game_frames;
-        draw_minimap(ui);
-        mini_serial++;
+        if (draw_minimap(ui))
+            mini_serial++;
     }
     t2 = HZ200;
     stage_hz[2] += t2 - t;
@@ -2067,30 +2193,30 @@ static void draw_frame(void) {
     t2 = HZ200;
     stage_hz[3] += t2 - t;
     t = t2;
-    if (game_frames - ui_bar_frame >= 8 || !bar_serial) {
-        k = bars_key();
-        if (k != ui_bar_key || !bar_serial) {
-            ui_bar_frame = game_frames;
-            ui_bar_key = k;
-            restore_bars();
-            draw_bars(ui);
-            bar_serial++;
+    if (game_frames - ui_bar_frame >= 8 || !bar_serial[0]) {
+        for (i = 0; i < NBARS; i++) {
+            k = bar_key(i);
+            if (k != ui_bar_key[i] || !bar_serial[i]) {
+                ui_bar_frame = game_frames;
+                ui_bar_key[i] = k;
+                restore_bar(i);
+                draw_bar(ui, i);
+                bar_serial[i]++;
+            }
         }
     }
     gfx_clip_full();
-    if (S->mini_serial != mini_serial) {
-        S->mini_serial = mini_serial;
-        gfx_copy_rect(scr, ui, 0, 0, VIEW_X - 1, 127);
-    }
+    if (S->mini_serial != mini_serial)
+        mini_to_screen(scr);
     if (S->side_serial != side_serial) {
         S->side_serial = side_serial;
         gfx_copy_rect(scr, ui, 0, 128, VIEW_X - 1, SCREEN_H - 1);
     }
-    if (S->bar_serial != bar_serial) {
-        S->bar_serial = bar_serial;
-        gfx_copy_rect(scr, ui, VIEW_X, 0, SCREEN_W - 1, VIEW_Y - 1);
-        gfx_copy_rect(scr, ui, VIEW_X, VIEW_Y + VIEW_H, SCREEN_W - 1, SCREEN_H - 1);
-    }
+    for (i = 0; i < NBARS; i++)
+        if (S->bar_serial[i] != bar_serial[i]) {
+            S->bar_serial[i] = bar_serial[i];
+            gfx_copy_rect(scr, ui, bar_box[i].x0, bar_box[i].y0, bar_box[i].x1, bar_box[i].y1);
+        }
     t2 = HZ200;
     stage_hz[4] += t2 - t;
     t = t2;
@@ -2365,7 +2491,8 @@ int game_run(int difficulty) {
     gfx_set_font(common.font);
     tt_set_palette(world.palette);
     mini_start();
-    side_serial = bar_serial = mini_serial = 0;
+    side_serial = mini_serial = 0;
+    memset(bar_serial, 0, sizeof bar_serial);
     ui_mini_frame = -100;
     memset(screens, 0, sizeof screens);
     for (i = 0; i < NSCREENS; i++)

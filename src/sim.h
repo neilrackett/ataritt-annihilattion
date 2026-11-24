@@ -58,29 +58,35 @@ typedef struct {
 #define UF_WAS_SEEN 16
 #define UF_ON_RADAR 32 /* an enemy the player's radar or sonar finds */
 
+/* What a tick reads of every unit comes first, in 48 bytes, so that it
+ * fills few of the 68030's 16-byte cache lines: first what the searches and
+ * the screen read too, then what an idle or waiting unit's step reads, then
+ * its first order */
 typedef struct {
     uint8_t alive, type, owner, flags;
     int32_t x, z;
+    int16_t next;   /* the next unit in its bucket */
+    int16_t target; /* the unit its weapons are on, or -1 */
+    uint16_t reload[3];
+    uint16_t paralyzed;
+    int16_t nscript; /* how many of its mission script's steps are still to run */
+    uint8_t norders, has_goal, movestate, firestate;
+    int16_t attacker;
+    Order order[MAX_ORDERS];
     uint16_t heading;
     int16_t speed; /* 8.8 pixels a tick */
     int32_t hp;
     uint32_t progress; /* while unbuilt: work done, of buildtime * TICKS */
-    int16_t target;    /* the unit its weapons are on, or -1 */
-    uint16_t reload[3];
     uint8_t burst[3];
-    uint8_t norders, npath, pathi, stuck;
-    Order order[MAX_ORDERS];
+    uint8_t npath, pathi, stuck;
     uint16_t path[MAX_PATH];
     int16_t goalx, goalz; /* where the path goes */
-    uint8_t has_goal, want_path, movestate, firestate;
-    uint16_t paralyzed;
+    uint8_t want_path;
     int16_t nano; /* what it builds or reclaims: a unit, or ~feature */
     uint8_t fq_type[6], fq_count[6];
-    int16_t script, nscript; /* the mission script still to run */
-    int32_t attacked;        /* tick it was last hit */
-    int16_t attacker;
+    int16_t script;   /* its mission script's next step */
+    int32_t attacked; /* tick it was last hit */
     int16_t homex, homez; /* patrol origin, and where a maneuvering unit returns */
-    int16_t next;         /* the next unit in its bucket */
     int32_t mex;          /* metal it extracts, 1/256 a tick */
     int16_t built_by;
     uint16_t reclaim;      /* ticks of reclaiming done */
@@ -88,6 +94,7 @@ typedef struct {
     uint8_t stock;         /* missiles stockpiled */
     uint16_t capture;      /* ticks of capturing done */
     uint16_t stockwork;    /* ticks paid toward the next missile */
+    uint16_t pad;          /* to 224 bytes, so that every unit's longs are as aligned as the first's */
 } Unit;
 
 typedef struct {

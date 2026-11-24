@@ -193,7 +193,27 @@ stage's share; `fps1`, `fps3`, `scroll` and `battle` are the ones to watch.
   radius and `reach`, the furthest a unit moves in a tick. It keeps the
   lowest-numbered of the nearest, as going down the enemy's whole list did.
   That list, for searches wider than three buckets (most of them, by weapon
-  range or sight), took 30% of AC25's time.
+  range or sight), took 30% of AC25's time. Most cells are empty, and most
+  searches meet no unit at all, so the cells are stepped through along a
+  row, and a search is set up only when it meets a unit (`search_cell()`):
+  a multiply for each cell, and setting up every search, cost as much
+  again as the units themselves.
+- **Most units, most ticks, do nothing.** In AC25 nine units in ten are
+  armed, and nearly all of them have no target, don't move and aren't
+  reloading; the computer's wait on their scripts. `unit_step()` keeps
+  their step short: the other orders (`order_step()`), the look for a
+  target and the firing are out of line, and what it asks of a unit's type
+  is a byte (`type_step[]`), not two of the cache's lines. GCC inlines a
+  function called once, and with the whole order switch inlined every
+  unit's step saved 11 registers. The fields a tick reads come first in
+  `Unit`, whose size stays a multiple of 4.
+- **The economy and sight are worked out again only when they change.**
+  `economy_step()` sums what the units make and use only when `eco_stale`
+  is set: by a unit finished, destroyed or captured, or by the wind. Set it
+  from anything new that changes those. Metal makers, which stop while
+  energy runs short, are added each tick. `update_sight()` draws the discs
+  again only when one of the player's units came into another bucket, came
+  or went.
 - **A building touching a path cell closes it**: buildings 16 pixels apart
   wall units in. The skirmish computer leaves 32 pixels round its own, and
   the lane in front of a factory clear.
@@ -230,6 +250,13 @@ stage's share; `fps1`, `fps3`, `scroll` and `battle` are the ones to watch.
   It silences what has played, so a short wait without it (a disk read) is
   quiet; a longer one (a loading screen) calls `snd_silence()` first, or
   the last frame's sound comes round again with the ring.
+- **TOS loads the program on any even address.** In Hatari it lands 2
+  bytes past a long, so every long in its data, on its stack and in its
+  blocks from `Mxalloc` straddled two of the bus's. `main()` runs the game
+  on a stack rounded down to 16 bytes (`tt_call_aligned()`), and
+  `tt_alloc_st()` and `tt_alloc_any()` give blocks on 16-byte boundaries:
+  drawing and the simulation each took 4 to 7% less. Putting `units[]` on
+  a boundary as well made no difference.
 - **Back to user mode with `SuperToUser()`, not `Super()`.** `tt_init()`
   calls `Super(0L)` and `tt_exit()` returns at another stack depth. TOS's
   and EmuTOS's `Super(ssp)` puts the user stack back where `Super(0L)` left

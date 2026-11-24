@@ -96,9 +96,10 @@ of 32-pixel cells that movement keeps to as well, with each movement class's
 reachable parts of the map labelled when a mission starts so that no search
 looks for a place out of reach; 64-pixel buckets for finding units, and
 256-pixel cells of each side's units for searches further afield; line of
-sight and radar; aircraft that fly straight at their height, ships on the
-water and submarines under it, each weapon hitting only what it can reach;
-the economy; captures and repairs; silos' missiles and the systems that
+sight and radar, worked out again when the player's units move; aircraft
+that fly straight at their height, ships on the water and submarines under
+it, each weapon hitting only what it can reach; the economy, summed again
+when a unit is finished, destroyed or captured; captures and repairs; silos' missiles and the systems that
 shoot them down; the missions' scripts and objectives; and a computer player
 that builds from idle factories, attacks in waves and fires its missiles,
 and in a skirmish builds its base from its Commander up.

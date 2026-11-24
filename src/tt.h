@@ -81,19 +81,27 @@ void tt_wait_vbl(void);
 /// Allocates ST-RAM, the only memory the video and DMA sound can read.
 ///
 /// @param bytes the size wanted
-/// @return the block, or null when there is not enough
+/// @return the block, on a 16-byte boundary, or null when there is not enough
 void* tt_alloc_st(int32_t bytes);
 
 /// Allocates memory, TT-RAM when there is enough of it, else ST-RAM.
 ///
 /// @param bytes the size wanted
-/// @return the block, or null when there is not enough
+/// @return the block, on a 16-byte boundary, or null when there is not enough
 void* tt_alloc_any(int32_t bytes);
 
 /// Frees a block from tt_alloc_st() or tt_alloc_any().
 ///
 /// @param p the block; null does nothing
 void tt_free(void* p);
+
+/// Calls a function on a stack whose pointer is on a 16-byte boundary. TOS
+/// may start the program with it on any even address, and a long pushed or
+/// saved there would straddle two of the bus's.
+///
+/// @param fn the function
+/// @return what it returns
+int tt_call_aligned(int (*fn)(void));
 
 /// Plays signed 8-bit mono samples through DMA sound over and over, until
 /// stopped, stopping whatever played.

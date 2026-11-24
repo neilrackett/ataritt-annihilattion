@@ -14,6 +14,7 @@
 #include "tt.h"
 
 Unit units[MAX_UNITS];
+_Static_assert(sizeof(Unit) % 4 == 0, "every unit's longs as aligned as the first's");
 Player players[2];
 Projectile projs[MAX_PROJ];
 Effect fx[MAX_FX];
@@ -70,6 +71,9 @@ static uint8_t* radar; /* per bucket: whether the player's radar or sonar covers
 int32_t sim_timer = -1;
 static int32_t next_wave;
 static int32_t last_warning = -1000;
+/* set when a unit is finished, destroyed or captured, or the wind changes:
+ * economy_step() sums again what the units make and use */
+static int eco_stale;
 static uint32_t rnd = 12345;
 
 static int rand16(void) {
@@ -642,6 +646,19 @@ static int path_run(int budget) {
     return used ? used : 1;
 }
 
+/* The first unit from k0 on, and then from 0, that wants a path, or -1 */
+static int want_path_from(int k0) {
+    const Unit* u = &units[k0];
+    int k;
+    for (k = k0; k < unit_hi; k++, u++)
+        if (u->want_path && u->alive && u->has_goal)
+            return k;
+    for (k = 0, u = units; k < k0; k++, u++)
+        if (u->want_path && u->alive && u->has_goal)
+            return k;
+    return -1;
+}
+
 /* A tick's path searching: the search under way, then the next units that
  * want paths, taking turns, while the budget lasts */
 static void paths_step(void) {
@@ -657,12 +674,7 @@ static void paths_step(void) {
             continue;
         }
         {
-            int i, k = path_rr < unit_hi ? path_rr : 0, found = -1;
-            for (i = 0; i < unit_hi; i++, k = k + 1 < unit_hi ? k + 1 : 0)
-                if (units[k].alive && units[k].want_path && units[k].has_goal) {
-                    found = k;
-                    break;
-                }
+            int found = want_path_from(path_rr < unit_hi ? path_rr : 0);
             if (found < 0 || ++looked > 40)
                 break;
             path_rr = found + 1;
@@ -738,38 +750,63 @@ const uint8_t* disc_widths(int r) {
     return widths[r];
 }
 
-/* Marks the buckets within range of a unit: a disc, a row at a time */
-static void cover_disc(uint8_t* map, const Unit* u, int range) {
+/* Marks the buckets within range of bucket bx, bz: a disc, a row at a time */
+static void cover_disc(uint8_t* map, int bx, int bz, int range) {
     const uint8_t* wt;
-    int bx = (u->x >> FIX) / BUCKET, bz = (u->z >> FIX) / BUCKET, dz;
-    int r = (range + BUCKET / 2) / BUCKET;
+    uint8_t* row;
+    int r = (range + BUCKET / 2) / BUCKET, z, z1;
     if (r > 31)
         r = 31;
     wt = disc_widths(r);
-    for (dz = -r; dz <= r; dz++) {
-        int z = bz + dz, w = wt[dz < 0 ? -dz : dz], x0, x1;
-        if (z < 0 || z >= bh)
-            continue;
-        x0 = bx - w < 0 ? 0 : bx - w;
-        x1 = bx + w >= bw ? bw - 1 : bx + w;
+    z = bz - r < 0 ? 0 : bz - r;
+    z1 = bz + r >= bh ? bh - 1 : bz + r;
+    if (z > z1)
+        return;
+    for (row = map + z * bw; z <= z1; z++, row += bw) {
+        int d = z < bz ? bz - z : z - bz, w = wt[d];
+        int x0 = bx - w < 0 ? 0 : bx - w, x1 = bx + w >= bw ? bw - 1 : bx + w;
         if (x0 <= x1)
-            memset(map + z * bw + x0, 1, (size_t)(x1 - x0 + 1));
+            memset(row + x0, 1, (size_t)(x1 - x0 + 1));
     }
 }
 
-/* What the player's units see, and what their radar and sonar find */
+/* The bucket each unit saw from when sight was last worked out, and its
+ * type, or 255 for none: a unit not the player's, or not built */
+static int16_t sight_bx[MAX_UNITS], sight_bz[MAX_UNITS];
+static uint8_t sight_type[MAX_UNITS];
+
+/* What the player's units see, and what their radar and sonar find. The
+ * discs are drawn again only when one of the player's units came into
+ * another bucket, came or went. */
 static void update_sight(void) {
-    int i;
-    memset(seen, 0, (size_t)(bw * bh));
-    memset(radar, 0, (size_t)(bw * bh));
+    int i, moved = 0;
     for (i = 0; i < unit_hi; i++) {
         const Unit* u = &units[i];
-        const UnitType* t = &unittypes[u->type];
-        if (!u->alive || u->owner != PLAYER || (u->flags & UF_UNBUILT))
-            continue;
-        cover_disc(seen, u, t->sight);
-        if (t->flags & (UF_RADAR | UF_SONAR))
-            cover_disc(radar, u, t->radar);
+        int bx = 0, bz = 0, type = 255;
+        if (u->alive && u->owner == PLAYER && !(u->flags & UF_UNBUILT)) {
+            bx = (u->x >> FIX) / BUCKET;
+            bz = (u->z >> FIX) / BUCKET;
+            type = u->type;
+        }
+        if (type != sight_type[i] || bx != sight_bx[i] || bz != sight_bz[i]) {
+            sight_type[i] = (uint8_t)type;
+            sight_bx[i] = (int16_t)bx;
+            sight_bz[i] = (int16_t)bz;
+            moved = 1;
+        }
+    }
+    if (moved) {
+        memset(seen, 0, (size_t)(bw * bh));
+        memset(radar, 0, (size_t)(bw * bh));
+        for (i = 0; i < unit_hi; i++) {
+            const UnitType* t;
+            if (sight_type[i] == 255)
+                continue;
+            t = &unittypes[sight_type[i]];
+            cover_disc(seen, sight_bx[i], sight_bz[i], t->sight);
+            if (t->flags & (UF_RADAR | UF_SONAR))
+                cover_disc(radar, sight_bx[i], sight_bz[i], t->radar);
+        }
     }
     for (i = 0; i < unit_hi; i++) {
         Unit* u = &units[i];
@@ -815,6 +852,7 @@ static void recount_storage(int p) {
 static void finish_unit(Unit* u) {
     const UnitType* t = &unittypes[u->type];
     u->flags &= (uint8_t)~UF_UNBUILT;
+    eco_stale = 1;
     u->hp = t->maxhp;
     if (t->flags & UF_MEX) {
         int x0 = foot_x0(t, u->x >> FIX), z0 = foot_z0(t, u->z >> FIX);
@@ -990,6 +1028,7 @@ static void kill_unit_as(int idx, int blast) {
     if (!u->alive)
         return;
     u->alive = 0;
+    eco_stale = 1;
     if (t->kind != UK_MOBILE)
         set_occupancy(idx, 0);
     players[owner].losses++;
@@ -1043,6 +1082,7 @@ static void capture_unit(int idx, int owner) {
     Unit* v = &units[idx];
     int old = v->owner;
     v->owner = (uint8_t)owner;
+    eco_stale = 1;
     order_clear(v);
     v->target = -1;
     v->attacker = -1;
@@ -1343,7 +1383,9 @@ static int damage_to(const WeaponType* w, const Unit* v) {
     return flies(v) ? w->damage_air : w->damage;
 }
 
-/* The reach of the weapons that fire by themselves */
+/* The reach of each type's weapons that fire by themselves, from sim_start() */
+static uint16_t type_range[MAX_UNITTYPES];
+
 static int max_range(const UnitType* t) {
     int i, r = 0;
     for (i = 0; i < 3; i++)
@@ -1363,20 +1405,79 @@ int manual_weapon(const UnitType* t) {
     return -1;
 }
 
+/* A search for the nearest enemy (nearest_enemy()): what it looks for, and
+ * the nearest it has found */
+typedef struct {
+    const Unit* u; /* 0 until a cell with units in it is met */
+    int x, z, radius, type, pref, wide;
+    int best, bestd, air, aird;
+} Search;
+
+/* Starts a search, once it meets a unit */
+static void __attribute__((noinline)) search_begin(Search* s, const Unit* u, int radius, int type) {
+    s->u = u;
+    s->x = u->x >> FIX;
+    s->z = u->z >> FIX;
+    s->radius = radius;
+    s->type = type;
+    s->pref = (unittypes[u->type].flags & UF_AIRPREF) != 0;
+    s->wide = radius > BUCKET * 3;
+    s->best = s->air = -1;
+    s->bestd = s->aird = radius + 1;
+}
+
+/* Looks through a cell's units, from unit i on */
+static void __attribute__((noinline)) search_cell(Search* s, int i) {
+    const Unit* u = s->u;
+    int radius = s->radius;
+    while (i >= 0) {
+        const Unit* v = &units[i];
+        int dx, dz, near, nearair, vi = i;
+        i = s->wide ? cnext[vi] : v->next;
+        if (!v->alive || v->owner == u->owner)
+            continue;
+        dx = (v->x >> FIX) - s->x;
+        dz = (v->z >> FIX) - s->z;
+        if (dx > radius || dx < -radius || dz > radius || dz < -radius)
+            continue;
+        if (s->type >= 0 && v->type != s->type)
+            continue;
+        if (u->owner == PLAYER && !(v->flags & UF_SEEN))
+            continue;
+        near = within(dx, dz, s->bestd) || (s->wide && vi < s->best && within(dx, dz, s->bestd + 1));
+        nearair = s->pref &&
+                  (within(dx, dz, s->aird) || (s->wide && vi < s->air && within(dx, dz, s->aird + 1))) &&
+                  flies(v);
+        if (!near && !nearair)
+            continue;
+        if (s->type == -1 && !can_attack(u, v))
+            continue;
+        if (nearair) {
+            s->aird = dist(dx, dz);
+            s->air = vi;
+        }
+        if (near) {
+            s->bestd = dist(dx, dz);
+            s->best = vi;
+        }
+    }
+}
+
 /* The nearest enemy within radius that the unit can fight (any, for type
  * -2), or of a type, or -1; aircraft before the rest for a unit that prefers
  * them. A narrow search goes bucket by bucket, keeping the first of the
  * nearest it meets. A wide one goes through the enemy side's coarse cells,
  * keeping the lowest numbered of the nearest, as going down all the side's
  * units in turn did: the cells are those any unit within radius could have
- * been in when they were filled, so it finds the same */
+ * been in when they were filled, so it finds the same. Most cells are empty,
+ * and most searches meet no unit: the cells are stepped through along a row,
+ * and the search is set up, and a cell looked through (search_cell()), only
+ * where there are units. */
 static int nearest_enemy(const Unit* u, int radius, int type) {
-    int x = u->x >> FIX, z = u->z >> FIX;
-    int bx0, bx1, bz0, bz1, bx, bz, best = -1, bestd = radius + 1, air = -1, aird = radius + 1;
-    int pref = (unittypes[u->type].flags & UF_AIRPREF) != 0;
-    int wide = radius > BUCKET * 3, across, i;
+    Search s;
+    int x = u->x >> FIX, z = u->z >> FIX, bx0, bx1, bz0, bz1, bz, across;
     const int16_t* heads;
-    if (wide) {
+    if (radius > BUCKET * 3) {
         int r = radius + reach, cell = BUCKET * COARSE;
         heads = coarse[!u->owner];
         across = cw;
@@ -1389,51 +1490,25 @@ static int nearest_enemy(const Unit* u, int radius, int type) {
         across = bw;
         bucket_range(x, z, radius, &bx0, &bx1, &bz0, &bz1);
     }
-    bx = bx0;
-    bz = bz0;
-    i = heads[bz * across + bx];
-    for (;;) {
-        const Unit* v;
-        int dx, dz, near, nearair, vi;
-        /* the next unit, cell by cell */
-        while (i < 0) {
-            if (++bx > bx1) {
-                bx = bx0;
-                if (++bz > bz1)
-                    goto done;
+    /* the first cell of a range that comes out empty is still looked in */
+    if (bx1 < bx0)
+        bx1 = bx0;
+    if (bz1 < bz0)
+        bz1 = bz0;
+    s.u = 0;
+    for (bz = bz0; bz <= bz1; bz++) {
+        const int16_t *cell = heads + bz * across + bx0, *last = cell + (bx1 - bx0);
+        do {
+            if (*cell >= 0) {
+                if (!s.u)
+                    search_begin(&s, u, radius, type);
+                search_cell(&s, *cell);
             }
-            i = heads[bz * across + bx];
-        }
-        vi = i;
-        v = &units[vi];
-        i = wide ? cnext[vi] : v->next;
-        if (!v->alive || v->owner == u->owner)
-            continue;
-        dx = (v->x >> FIX) - x;
-        dz = (v->z >> FIX) - z;
-        if (dx > radius || dx < -radius || dz > radius || dz < -radius)
-            continue;
-        if (type >= 0 && v->type != type)
-            continue;
-        if (u->owner == PLAYER && !(v->flags & UF_SEEN))
-            continue;
-        near = within(dx, dz, bestd) || (wide && vi < best && within(dx, dz, bestd + 1));
-        nearair = pref && (within(dx, dz, aird) || (wide && vi < air && within(dx, dz, aird + 1))) && flies(v);
-        if (!near && !nearair)
-            continue;
-        if (type == -1 && !can_attack(u, v))
-            continue;
-        if (nearair) {
-            aird = dist(dx, dz);
-            air = vi;
-        }
-        if (near) {
-            bestd = dist(dx, dz);
-            best = vi;
-        }
+        } while (++cell <= last);
     }
-done:
-    return air >= 0 ? air : best;
+    if (!s.u)
+        return -1;
+    return s.air >= 0 ? s.air : s.best;
 }
 
 static void fire(Unit* u, int wi, int tx, int tz, int target) {
@@ -1508,35 +1583,28 @@ static void fire(Unit* u, int wi, int tx, int tz, int target) {
     }
 }
 
-static void weapons_step(Unit* u, int idx) {
-    const UnitType* t = &unittypes[u->type];
-    int i;
-    if (!(t->flags & UF_ARMED))
-        return;
-    for (i = 0; i < 3; i++)
-        if (u->reload[i])
-            u->reload[i]--;
-    /* look for something to shoot every fourth tick */
-    if (((sim_tick_count + idx) & 3) == 0) {
-        int keep = u->target >= 0 && units[u->target].alive && units[u->target].owner != u->owner &&
-                   in_range(u, &units[u->target], max_range(t) + 16);
-        int forced = u->norders && u->order[0].kind == O_ATTACK;
-        if (!keep && !forced) {
-            u->target = -1;
-            if (u->firestate == 2)
-                u->target = (int16_t)nearest_enemy(u, max_range(t), -1);
-            else if (
-                u->firestate == 1 && u->attacker >= 0 && units[u->attacker].alive &&
-                in_range(u, &units[u->attacker], max_range(t))
-            )
-                u->target = u->attacker;
-        }
-    }
-    /* what it is capturing, it does not shoot */
-    if (u->norders && u->order[0].kind == O_CAPTURE && u->target == u->order[0].target)
+/* An armed unit's look for something to shoot, every fourth tick: it keeps
+ * its target while it is in reach, or an attack order's, or else takes the
+ * nearest enemy, or what attacked it, as its fire state allows */
+static void __attribute__((noinline)) choose_target(Unit* u) {
+    int keep = u->target >= 0 && units[u->target].alive && units[u->target].owner != u->owner &&
+               in_range(u, &units[u->target], type_range[u->type] + 16);
+    int forced = u->norders && u->order[0].kind == O_ATTACK;
+    if (!keep && !forced) {
         u->target = -1;
-    if (u->target < 0 || !units[u->target].alive)
-        return;
+        if (u->firestate == 2)
+            u->target = (int16_t)nearest_enemy(u, type_range[u->type], -1);
+        else if (
+            u->firestate == 1 && u->attacker >= 0 && units[u->attacker].alive &&
+            in_range(u, &units[u->attacker], type_range[u->type])
+        )
+            u->target = u->attacker;
+    }
+}
+
+/* The weapons that are loaded fire at the unit's target, those that reach it */
+static void __attribute__((noinline)) fire_weapons(Unit* u, const UnitType* t) {
+    int i;
     for (i = 0; i < 3; i++) {
         const WeaponType* w;
         const Unit* v = &units[u->target];
@@ -1558,6 +1626,25 @@ static void weapons_step(Unit* u, int idx) {
             u->reload[i] = w->reload;
         }
     }
+}
+
+/* Most units, most ticks, have nothing to shoot at: this much is done for
+ * every armed unit, and the rest only when there is more to do */
+static void weapons_step(Unit* u, int idx) {
+    if (u->reload[0])
+        u->reload[0]--;
+    if (u->reload[1])
+        u->reload[1]--;
+    if (u->reload[2])
+        u->reload[2]--;
+    if (((sim_tick_count + idx) & 3) == 0)
+        choose_target(u);
+    /* what it is capturing, it does not shoot */
+    if (u->norders && u->order[0].kind == O_CAPTURE && u->target == u->order[0].target)
+        u->target = -1;
+    if (u->target < 0 || !units[u->target].alive)
+        return;
+    fire_weapons(u, &unittypes[u->type]);
 }
 
 /* Spend toward building: returns 1 when the work this tick was paid for */
@@ -1670,7 +1757,7 @@ static void builder_order(Unit* u, Order* o) {
         snd_play(SND_CANTDO, 1);
 }
 
-static void factory_step(Unit* u, int idx) {
+static void __attribute__((noinline)) factory_step(Unit* u, int idx) {
     const UnitType* t = &unittypes[u->type];
     if (u->nano >= 0 && units[u->nano].alive && (units[u->nano].flags & UF_UNBUILT)) {
         Unit* v = &units[u->nano];
@@ -1737,7 +1824,7 @@ static void reclaim_order(Unit* u, Order* o) {
 }
 
 /* Runs the mission script until it queues an order that takes time */
-static void run_script(Unit* u) {
+static void __attribute__((noinline)) run_script(Unit* u) {
     while (u->nscript > 0 && u->norders == 0) {
         const ScriptOp* op = &mission.ops[u->script];
         Order o;
@@ -1809,7 +1896,7 @@ static void bomber_run(Unit* u, const Unit* v) {
 
 /* A silo or an anti-missile system builds missiles, paying for them as it
  * goes, as a factory pays for a unit; it holds two at most */
-static void stockpile_step(Unit* u) {
+static void __attribute__((noinline)) stockpile_step(Unit* u) {
     const UnitType* t = &unittypes[u->type];
     const WeaponType* w = 0;
     Player* p = &players[u->owner];
@@ -1856,53 +1943,9 @@ static int reach_unit(Unit* u, const Unit* v) {
     return 1;
 }
 
-static void unit_step(int idx) {
-    Unit* u = &units[idx];
-    const UnitType* t = &unittypes[u->type];
-    Order* o;
-    if (u->flags & UF_UNBUILT)
-        return;
-    if (u->paralyzed) {
-        u->paralyzed--;
-        u->speed = 0;
-        return;
-    }
-    if (u->nscript > 0 && u->norders == 0)
-        run_script(u);
-    if (!u->alive)
-        return; /* its script blew it up */
-    if (t->kind == UK_FACTORY)
-        factory_step(u, idx);
-    if (t->flags & UF_STOCKPILE)
-        stockpile_step(u);
-    weapons_step(u, idx);
-    /* the computer's crawling bombs go off by themselves beside an enemy */
-    if ((t->flags & UF_KAMIKAZE) && u->owner == ENEMY && ((sim_tick_count + idx) & 3) == 0 &&
-        nearest_enemy(u, 36, -2) >= 0) {
-        sim_self_destruct(idx);
-        return;
-    }
-    while (u->norders && u->order[0].kind == O_NONE)
-        pop_order(u);
-    if (!u->norders) {
-        /* idle: a unit hit by something out of reach goes after it, then comes home */
-        if (t->kind == UK_MOBILE && (t->flags & UF_ARMED) && u->movestate > 0 && u->attacker >= 0 &&
-            units[u->attacker].alive && u->target < 0 && sim_tick_count - u->attacked < TICKS * 4) {
-            const Unit* a = &units[u->attacker];
-            if (dist((a->x >> FIX) - u->homex, (a->z >> FIX) - u->homez) < 500) {
-                set_goal(u, a->x >> FIX, a->z >> FIX);
-            }
-        } else if (u->has_goal && u->target >= 0 && t->kind == UK_MOBILE) {
-            u->has_goal = 0;
-            u->speed = 0;
-        }
-        if (u->has_goal)
-            move_step(u);
-        else
-            u->speed = 0;
-        return;
-    }
-    o = &u->order[0];
+/* A unit's step under its first order, but for the waits (unit_step()) */
+static void __attribute__((noinline)) order_step(Unit* u, int idx, const UnitType* t) {
+    Order* o = &u->order[0];
     switch (o->kind) {
     case O_MOVE:
         set_goal(u, o->x, o->z);
@@ -1962,7 +2005,7 @@ static void unit_step(int idx) {
             bomber_run(u, v);
             break;
         }
-        if (in_range(u, v, max_range(t) - 8) || !max_range(t)) {
+        if (in_range(u, v, type_range[u->type] - 8) || !type_range[u->type]) {
             u->has_goal = 0;
             u->speed = 0;
         } else {
@@ -2048,15 +2091,6 @@ static void unit_step(int idx) {
         }
         break;
     }
-    case O_WAIT:
-        if (--o->n <= 0)
-            pop_order(u);
-        break;
-    case O_WAITATTACK:
-        /* waiting on another unit: until it is attacked, or gone */
-        if (o->target >= 0 && (!units[o->target].alive || sim_tick_count - units[o->target].attacked < 2))
-            pop_order(u);
-        break;
     case O_CAPTURE: {
         Unit* v = o->target >= 0 ? &units[o->target] : 0;
         if (!v || !v->alive || v->owner == u->owner || !(t->flags & UF_CAPTURE)) {
@@ -2100,6 +2134,88 @@ static void unit_step(int idx) {
     }
     default:
         pop_order(u);
+        break;
+    }
+}
+
+/* An idle unit hit by something out of reach goes after it, when that is
+ * not far from home */
+static void __attribute__((noinline)) chase_attacker(Unit* u) {
+    const Unit* a = &units[u->attacker];
+    if (dist((a->x >> FIX) - u->homex, (a->z >> FIX) - u->homez) < 500)
+        set_goal(u, a->x >> FIX, a->z >> FIX);
+}
+
+/* What unit_step() asks of each type, a bit each (STEP_*), from sim_start():
+ * a byte, where the type itself would be two of the cache's lines */
+enum { STEP_MOBILE = 1, STEP_FACTORY = 2, STEP_ARMED = 4, STEP_STOCKPILE = 8, STEP_KAMIKAZE = 16 };
+static uint8_t type_step[MAX_UNITTYPES];
+
+static int step_bits(const UnitType* t) {
+    return (t->kind == UK_MOBILE ? STEP_MOBILE : 0) | (t->kind == UK_FACTORY ? STEP_FACTORY : 0) |
+           (t->flags & UF_ARMED ? STEP_ARMED : 0) | (t->flags & UF_STOCKPILE ? STEP_STOCKPILE : 0) |
+           (t->flags & UF_KAMIKAZE ? STEP_KAMIKAZE : 0);
+}
+
+/* Most units, most ticks, stand idle or wait: their steps are kept short,
+ * and the rest is done out of line */
+static void unit_step(int idx) {
+    Unit* u = &units[idx];
+    int step = type_step[u->type];
+    Order* o;
+    if (u->flags & UF_UNBUILT)
+        return;
+    if (u->paralyzed) {
+        u->paralyzed--;
+        u->speed = 0;
+        return;
+    }
+    if (u->nscript > 0 && u->norders == 0)
+        run_script(u);
+    if (!u->alive)
+        return; /* its script blew it up */
+    if (step & STEP_FACTORY)
+        factory_step(u, idx);
+    if (step & STEP_STOCKPILE)
+        stockpile_step(u);
+    if (step & STEP_ARMED)
+        weapons_step(u, idx);
+    /* the computer's crawling bombs go off by themselves beside an enemy */
+    if ((step & STEP_KAMIKAZE) && u->owner == ENEMY && ((sim_tick_count + idx) & 3) == 0 &&
+        nearest_enemy(u, 36, -2) >= 0) {
+        sim_self_destruct(idx);
+        return;
+    }
+    while (u->norders && u->order[0].kind == O_NONE)
+        pop_order(u);
+    if (!u->norders) {
+        /* idle: a unit hit by something out of reach goes after it, then comes home */
+        if ((step & STEP_MOBILE) && (step & STEP_ARMED) && u->movestate > 0 && u->attacker >= 0 &&
+            units[u->attacker].alive && u->target < 0 && sim_tick_count - u->attacked < TICKS * 4) {
+            chase_attacker(u);
+        } else if (u->has_goal && u->target >= 0 && (step & STEP_MOBILE)) {
+            u->has_goal = 0;
+            u->speed = 0;
+        }
+        if (u->has_goal)
+            move_step(u);
+        else
+            u->speed = 0;
+        return;
+    }
+    o = &u->order[0];
+    switch (o->kind) {
+    case O_WAIT:
+        if (--o->n <= 0)
+            pop_order(u);
+        break;
+    case O_WAITATTACK:
+        /* waiting on another unit: until it is attacked, or gone */
+        if (o->target >= 0 && (!units[o->target].alive || sim_tick_count - units[o->target].attacked < 2))
+            pop_order(u);
+        break;
+    default:
+        order_step(u, idx, &unittypes[u->type]);
         break;
     }
 }
@@ -2219,26 +2335,53 @@ static int32_t energy_net(const UnitType* t) {
     return t->emake - (t->kind != UK_MOBILE && (t->flags & UF_ACTIVE) ? t->euse : 0);
 }
 
+/* Adds what a finished unit makes and uses in a tick to its player's sums */
+static void add_income(const Unit* u, int32_t* m, int32_t* e) {
+    const UnitType* t = &unittypes[u->type];
+    m[u->owner] += t->mmake + u->mex;
+    e[u->owner] += energy_net(t);
+    if (t->flags & UF_TIDAL)
+        e[u->owner] += mission.tidal * 256 / TICKS;
+    if (t->flags & UF_WIND) {
+        int wv = wind_now < t->wind ? wind_now : t->wind;
+        e[u->owner] += wv * 256 / TICKS;
+    }
+}
+
+/* What the units make and use is the same every tick until a unit is
+ * finished, destroyed or captured, or the wind changes (eco_stale), so it is
+ * summed again only then. Metal makers, which stand idle while energy runs
+ * short, are listed apart and added each tick. */
+static int32_t eco_m[2], eco_e[2];
+static int16_t makers[MAX_UNITS];
+static int nmakers;
+
 static void economy_step(void) {
     int i, p;
-    int32_t m[2] = {0, 0}, e[2] = {0, 0};
-    for (i = 0; i < unit_hi; i++) {
-        Unit* u = &units[i];
-        const UnitType* t;
-        if (!u->alive || (u->flags & UF_UNBUILT))
-            continue;
-        t = &unittypes[u->type];
-        /* a metal maker stands idle while energy runs short */
-        if ((t->flags & UF_MAKER) && players[u->owner].energy < t->euse * 2)
-            continue;
-        m[u->owner] += t->mmake + u->mex;
-        e[u->owner] += energy_net(t);
-        if (t->flags & UF_TIDAL)
-            e[u->owner] += mission.tidal * 256 / TICKS;
-        if (t->flags & UF_WIND) {
-            int wv = wind_now < t->wind ? wind_now : t->wind;
-            e[u->owner] += wv * 256 / TICKS;
+    int32_t m[2], e[2];
+    if (eco_stale) {
+        eco_stale = 0;
+        eco_m[0] = eco_m[1] = eco_e[0] = eco_e[1] = 0;
+        nmakers = 0;
+        for (i = 0; i < unit_hi; i++) {
+            const Unit* u = &units[i];
+            if (!u->alive || (u->flags & UF_UNBUILT))
+                continue;
+            if (unittypes[u->type].flags & UF_MAKER)
+                makers[nmakers++] = (int16_t)i;
+            else
+                add_income(u, eco_m, eco_e);
         }
+    }
+    for (p = 0; p < 2; p++) {
+        m[p] = eco_m[p];
+        e[p] = eco_e[p];
+    }
+    for (i = 0; i < nmakers; i++) {
+        const Unit* u = &units[makers[i]];
+        if (players[u->owner].energy < unittypes[u->type].euse * 2)
+            continue;
+        add_income(u, m, e);
     }
     for (p = 0; p < 2; p++) {
         Player* pl = &players[p];
@@ -2258,6 +2401,7 @@ static void economy_step(void) {
     if (sim_tick_count % (TICKS * 8) == 0) {
         int span = mission.maxwind - mission.minwind;
         wind_now = (mission.minwind + (span > 0 ? rand16() % span : 0)) / 100;
+        eco_stale = 1;
     }
 }
 
@@ -2745,6 +2889,10 @@ static int map_alloc(void) {
     memset(pbuilt, 0, (size_t)np);
     memset(stampv, 0, (size_t)np);
     cur_stamp = 0;
+    /* no unit sees anything yet */
+    memset(seen, 0, (size_t)nb);
+    memset(radar, 0, (size_t)nb);
+    memset(sight_type, 255, sizeof sight_type);
     return 1;
 }
 
@@ -2792,6 +2940,10 @@ int sim_start(int schema) {
         if (unittypes[i].speed > reach)
             reach = unittypes[i].speed;
     reach = (reach >> 8) + 2;
+    for (i = 0; i < nunittypes; i++) {
+        type_range[i] = (uint16_t)max_range(&unittypes[i]);
+        type_step[i] = (uint8_t)step_bits(&unittypes[i]);
+    }
     pw = (mission.w + 1) / 2;
     ph = (mission.h + 1) / 2;
     for (pshift = 0; (1 << pshift) < pw; pshift++)
@@ -2824,6 +2976,7 @@ int sim_start(int schema) {
     if (s->computer_energy > 1000)
         players[ENEMY].base_estore = s->computer_energy;
     wind_now = (mission.minwind + mission.maxwind) / 200;
+    eco_stale = 1;
     for (i = 0; i < s->nunits; i++) {
         const PlacedUnit* p = &s->units[i];
         int x = p->x, z = p->z, n;

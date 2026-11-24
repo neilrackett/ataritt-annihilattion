@@ -940,7 +940,7 @@ static int play_from(int m, int difficulty, const char** note) {
     }
 }
 
-int main(void) {
+static int run(void) {
     uint16_t title_pal[16];
     uint8_t* title;
     int difficulty = 1;
@@ -1006,4 +1006,8 @@ int main(void) {
         (void)Fclose((short)logfh);
     tt_exit();
     return 0;
+}
+
+int main(void) {
+    return tt_call_aligned(run);
 }

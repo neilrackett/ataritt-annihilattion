@@ -121,20 +121,46 @@ void tt_sorry(const char* why) {
     (void)Cnecin();
 }
 
+/* TOS gives blocks on any even address, so a block is taken 16 bytes
+ * longer and moved up to the next 16: its longs never straddle two of the
+ * bus's, nor its rows the cache's lines. The byte before it says how far it
+ * was moved. */
+static void* aligned_block(long p) {
+    uint8_t* a;
+    if (p <= 0)
+        return 0;
+    a = (uint8_t*)((p + 16) & ~15L);
+    a[-1] = (uint8_t)(a - (uint8_t*)p);
+    return a;
+}
+
 void* tt_alloc_st(int32_t bytes) {
-    long p = (long)Mxalloc(bytes, 0);
-    return p > 0 ? (void*)p : 0;
+    return aligned_block((long)Mxalloc(bytes + 16, 0));
 }
 
 void* tt_alloc_any(int32_t bytes) {
-    long p = (long)Mxalloc(bytes, 3);
-    return p > 0 ? (void*)p : 0;
+    return aligned_block((long)Mxalloc(bytes + 16, 3));
 }
 
 void tt_free(void* p) {
     if (p)
-        (void)Mfree(p);
+        (void)Mfree((uint8_t*)p - ((uint8_t*)p)[-1]);
 }
+
+/* Rounds the stack pointer down to 16 bytes, keeping the old one on the
+ * new stack, calls the function, and puts the old one back */
+__asm__("    .text\n"
+        "    .globl tt_call_aligned\n"
+        "tt_call_aligned:\n"
+        "    move.l 4(%sp),%a0\n"
+        "    move.l %sp,%a1\n"
+        "    move.l %sp,%d0\n"
+        "    and.l #-16,%d0\n"
+        "    move.l %d0,%sp\n"
+        "    move.l %a1,-(%sp)\n"
+        "    jsr (%a0)\n"
+        "    move.l (%sp),%sp\n"
+        "    rts\n");
 
 static void set_base(const void* a) {
     uint32_t v = (uint32_t)a;

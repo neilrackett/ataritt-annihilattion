@@ -165,7 +165,7 @@ int ground_height(int x, int z) {
 
 int type_ground(int type, int x, int z) {
     int h = ground_height(x, z);
-    if ((unittypes[type].flags & (UF_SHIP | UF_FLY)) && h < mission.sealevel)
+    if ((unittypes[type].flags & (UF_SHIP | UF_FLY | UF_HOVER)) && h < mission.sealevel)
         h = mission.sealevel;
     return h;
 }
@@ -787,7 +787,7 @@ static void cover_disc(uint8_t* map, int bx, int bz, int range) {
 /* The bucket each unit saw from when sight was last worked out, and its
  * type, or 255 for none: a unit not the player's, or not built */
 static int16_t sight_bx[MAX_UNITS], sight_bz[MAX_UNITS];
-static uint8_t sight_type[MAX_UNITS];
+static uint16_t sight_type[MAX_UNITS];
 
 /* What the player's units see, and what their radar and sonar find. The
  * discs are drawn again only when one of the player's units came into
@@ -796,14 +796,14 @@ static void update_sight(void) {
     int i, moved = 0;
     for (i = 0; i < unit_hi; i++) {
         const Unit* u = &units[i];
-        int bx = 0, bz = 0, type = 255;
+        int bx = 0, bz = 0, type = NO_TYPE;
         if (u->alive && u->owner == PLAYER && !(u->flags & UF_UNBUILT)) {
             bx = (u->x >> FIX) / BUCKET;
             bz = (u->z >> FIX) / BUCKET;
             type = u->type;
         }
         if (type != sight_type[i] || bx != sight_bx[i] || bz != sight_bz[i]) {
-            sight_type[i] = (uint8_t)type;
+            sight_type[i] = (uint16_t)type;
             sight_bx[i] = (int16_t)bx;
             sight_bz[i] = (int16_t)bz;
             moved = 1;
@@ -814,7 +814,7 @@ static void update_sight(void) {
         memset(radar, 0, (size_t)(bw * bh));
         for (i = 0; i < unit_hi; i++) {
             const UnitType* t;
-            if (sight_type[i] == 255)
+            if (sight_type[i] == NO_TYPE)
                 continue;
             t = &unittypes[sight_type[i]];
             cover_disc(seen, sight_bx[i], sight_bz[i], t->sight);
@@ -900,7 +900,7 @@ static int spawn_unit(int type, int owner, int x, int z, int unbuilt) {
     memset(u, 0, sizeof *u);
     u->alive = 1;
     sim_roster++;
-    u->type = (uint8_t)type;
+    u->type = (uint16_t)type;
     u->owner = (uint8_t)owner;
     u->x = (int32_t)x << FIX;
     u->z = (int32_t)z << FIX;
@@ -1200,7 +1200,7 @@ int factory_queue(Unit* u, int type, int n) {
         if (u->fq_count[i] && u->fq_type[i] == type)
             u->fq_count[i] = (uint8_t)(u->fq_count[i] > -n ? u->fq_count[i] + n : 0);
     } else {
-        u->fq_type[i] = (uint8_t)type;
+        u->fq_type[i] = (uint16_t)type;
         u->fq_count[i] = (uint8_t)(u->fq_count[i] + n > 99 ? 99 : u->fq_count[i] + n);
     }
     return 1;
@@ -1874,7 +1874,7 @@ static void __attribute__((noinline)) run_script(Unit* u) {
             return;
         case OP_ATTACKTYPE:
             o.kind = O_ATTACKTYPE;
-            o.a = (uint8_t)op->a;
+            o.a = (uint16_t)op->a;
             order_add(u, &o, 1);
             break;
         case OP_ORDERS:
@@ -2198,9 +2198,10 @@ static void unit_step(int idx) {
         stockpile_step(u);
     if (step & STEP_ARMED)
         weapons_step(u, idx);
-    /* the computer's crawling bombs go off by themselves beside an enemy */
-    if ((step & STEP_KAMIKAZE) && u->owner == ENEMY && ((sim_tick_count + idx) & 3) == 0 &&
-        nearest_enemy(u, 36, -2) >= 0) {
+    /* the computer's crawling bombs, and anyone's mines, go off by
+     * themselves beside an enemy */
+    if ((step & STEP_KAMIKAZE) && (u->owner == ENEMY || !(step & STEP_MOBILE)) &&
+        ((sim_tick_count + idx) & 3) == 0 && nearest_enemy(u, 36, -2) >= 0) {
         sim_self_destruct(idx);
         return;
     }
@@ -2476,7 +2477,7 @@ static void computer_build(void) {
         }
         if (pick < 0 || players[ENEMY].metal < (int32_t)unittypes[pick].metalcost << 7)
             continue;
-        u->fq_type[0] = (uint8_t)pick;
+        u->fq_type[0] = (uint16_t)pick;
         u->fq_count[0] = 1;
     }
 }
@@ -2643,7 +2644,7 @@ static void computer_base(void) {
             continue;
         memset(&o, 0, sizeof o);
         o.kind = O_BUILD;
-        o.a = (uint8_t)type;
+        o.a = (uint16_t)type;
         o.x = (int16_t)x;
         o.z = (int16_t)z;
         o.target = -1;
@@ -2912,7 +2913,7 @@ static int map_alloc(void) {
     /* no unit sees anything yet */
     memset(seen, 0, (size_t)nb);
     memset(radar, 0, (size_t)nb);
-    memset(sight_type, 255, sizeof sight_type);
+    memset(sight_type, 0xFF, sizeof sight_type); /* NO_TYPE */
     /* no unit in any bucket */
     memset(bucket, 0xFF, (size_t)nb * 2);
     memset(coarse[0], 0xFF, (size_t)nc * 4);

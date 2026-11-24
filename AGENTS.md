@@ -2,10 +2,11 @@
 
 AnnihilaTTion is a Total Annihilation engine for the Atari TT, playing the
 free demo's three Arm missions, or the full game's two campaigns from its
-CDs, in TT medium (640x480, 16 colours). It is a small engine of its own,
-written in C for the 68030, plus a Python converter that turns the game's
-data into what the engine reads; the demo and the full game convert to the
-same files, and one program plays either. This file holds the
+CDs, with The Core Contingency's and Battle Tactics' from theirs when they
+are there, in TT medium (640x480, 16 colours). It is a small engine of its
+own, written in C for the 68030, plus a Python converter that turns the
+game's data into what the engine reads; the demo, the full game and its
+expansions convert to the same files, and one program plays any of them. This file holds the
 rules and the lessons that the docs don't: read the docs for what things are.
 
 | For | Read |
@@ -27,8 +28,8 @@ rules and the lessons that the docs don't: read the docs for what things are.
   (`ANNIHILA.TOS`, and the demo's data in `dist/DATA`) and `dist/full` (the
   full game's, its data in `dist/full/DATA`);
   the demo, the CDs' images and what they unpack to, test runs and TOS
-  images in `tmp/` (`tmp/ta-demo`, `tmp/disks`, `tmp/ta-full`, `tmp/runs`,
-  `tmp/tos`). Nothing points at other checkouts on Neil's computer.
+  images in `tmp/` (`tmp/ta-demo`, `tmp/disks`, `tmp/ta-full`, its
+  expansions in `tmp/ta-full/cc` and `bt`, `tmp/runs`, `tmp/tos`). Nothing points at other checkouts on Neil's computer.
 - **The TT comes first**, in code and docs. The Falcon is an experiment and a
   base for later. There is **one binary** for both: `src/tt.c` handles their
   differences at run time.
@@ -295,6 +296,21 @@ stage's share; `fps1`, `fps3`, `scroll` and `battle` are the ones to watch.
   only; the full game's CDs and films are `build.sh --full`'s.
 - TA's data has its typos: numbers such as `3.6.`, a script moving a unit
   to x 81200. Read it forgivingly, and keep what it says within range.
+- **The expansions lie over the game's data**, in `cc/` and `bt/` beside
+  it, as the game reads its archives: find files with `ta.path()`, and list
+  folders with `ta.listdir()` and `ta.walk()`, never `os.listdir()`, or
+  their files go missing. What a file belongs to is where it first appears
+  (`ta.lowest()`): The Core Contingency ships its own copies of the
+  original's campaigns. `OA_EXPANSIONS=none` converts the full game alone.
+- **Room on the TT bounds the expansions too.** They take unit types to
+  272 and weapons to 179, past a byte: `MAX_UNITTYPES` and `NO_TYPE` in
+  `data.h` and the converter go together, and a mission's allowed list has
+  a bit for each. Their sounds would overrun the ST-RAM the full game's
+  leave, so `SOUND_BUDGET` cuts the longest shorter; the demo's and the
+  full game's are under it and stay as they were. Maps that leave too few
+  tiles, or too many path cells for 16-bit indices, are left out (`fits()`),
+  campaign missions as well as skirmishes: the Krogoth Encounter's 760x760
+  cells need 4.7 MB.
 
 ## The web converter
 

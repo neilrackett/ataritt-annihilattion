@@ -368,7 +368,7 @@ static void order_build(int wx, int wz, int queue) {
             continue;
         memset(&o, 0, sizeof o);
         o.kind = O_BUILD;
-        o.a = (uint8_t)build_type;
+        o.a = (uint16_t)build_type;
         o.x = (int16_t)x;
         o.z = (int16_t)z;
         o.target = -1;
@@ -506,7 +506,7 @@ static void box_select(int x0, int y0, int x1, int y1, int add) {
 #define BTN_Y 154
 
 /* What a builder's menu offers: its options the mission lets the player build */
-static int menu_options(int unit, uint8_t* out) {
+static int menu_options(int unit, uint16_t* out) {
     const UnitType* t = &unittypes[units[unit].type];
     int k, n = 0;
     for (k = 0; k < t->nbuild; k++)
@@ -516,7 +516,7 @@ static int menu_options(int unit, uint8_t* out) {
 }
 
 static int build_option(int unit, int slot) {
-    uint8_t opts[MAX_BUILD];
+    uint16_t opts[MAX_BUILD];
     int n = menu_options(unit, opts), k = build_page * 6 + slot;
     return k < n ? opts[k] : -1;
 }
@@ -584,7 +584,7 @@ static void panel_click(int x, int y, int right) {
             return;
         }
         if (y >= PIC_Y + 196 && y < PIC_Y + 216) {
-            uint8_t opts[MAX_BUILD];
+            uint16_t opts[MAX_BUILD];
             int pages = (menu_options(mu, opts) + 5) / 6;
             build_page = (build_page + (x < 64 ? pages - 1 : 1)) % (pages ? pages : 1);
             snd_play(SND_BUTTON, 1);
@@ -616,7 +616,7 @@ static void draw_button(uint8_t* scr, int b, int x, int y, int lit) {
 
 static void draw_side_panel(uint8_t* scr) {
     int mu = menu_unit();
-    uint8_t opts[MAX_BUILD];
+    uint16_t opts[MAX_BUILD];
     char s[32];
     gfx_clip(0, 128, 127, 447);
     draw_button(scr, BTN_BUILD, 4, 132, page == 0);
@@ -1862,7 +1862,8 @@ typedef struct {
     int16_t x0, y0, x1, y1; /* the box it covers */
     int32_t built;          /* how far built, for the nanolathe's frame */
     uint16_t depth;         /* its place in the order */
-    uint8_t type, look;     /* its type, and a LOOK_ */
+    uint16_t type;          /* its type */
+    uint8_t look;           /* a LOOK_ */
     uint8_t seen;           /* the drawing it was last in */
 } Drawn;
 static Drawn drawn[MAX_UNITS];

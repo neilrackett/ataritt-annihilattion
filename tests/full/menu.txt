@@ -1,7 +1,9 @@
 # Copyright (C) 2026 Neil Rackett
 # SPDX-License-Identifier: GPL-3.0-or-later
-# The full game's menus (DATA=dist/full tools/test_hatari.sh): the title,
-# the campaigns, the Arm campaign's missions and the first one's briefing
+# The full game's menus, with both expansions (DATA=dist/full
+# tools/test_hatari.sh): the title, the campaigns by game, Battle Tactics'
+# first campaign (every mission open), the Arm campaign's missions and the
+# first one's briefing
 menu
 wait 5
 shot M1
@@ -12,18 +14,31 @@ wait 1
 mouse 187 402 0
 wait 10
 shot M2
-mouse 507 145 0
+mouse 380 110 0
 wait 2
-mouse 507 145 1
+mouse 380 110 1
 wait 1
-mouse 507 145 0
+mouse 380 110 0
 wait 10
 shot M3
+mouse 440 438 0
+wait 2
+mouse 440 438 1
+wait 1
+mouse 440 438 0
+wait 10
+mouse 100 110 0
+wait 2
+mouse 100 110 1
+wait 1
+mouse 100 110 0
+wait 10
+shot M4
 mouse 100 90 0
 wait 2
 mouse 100 90 1
 wait 1
 mouse 100 90 0
 wait 30
-shot M4
+shot M5
 quit

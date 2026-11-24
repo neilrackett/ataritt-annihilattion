@@ -14,6 +14,9 @@ plays the free demo's three Arm missions, or, converted from your own CDs,
 the full game: both campaigns' 50 missions with their briefings and spoken
 narration, skirmishes against the computer on 24 of its multiplayer maps,
 all 157 units on land, at sea and in the air, the CD's music and the films.
+With its expansions' CDs too, it plays The Core Contingency's two campaigns
+and Battle Tactics' eight, their units (272 in all) and their worlds, and
+skirmishes on 40 maps.
 Everything is converted from the game's own data. It's not quite _total_,
 as the TT needs a few compromises, but it's recognisably Total Annihilation.
 
@@ -59,7 +62,8 @@ To try it first, `make play` plays it in [Hatari](https://www.hatari-emu.org).
 For the full game, on a Mac or Linux:
 
 1. Make images of your two Total Annihilation CDs (CUE and BIN, or ISO) and
-   put them in `tmp/disks` (see [Building](docs/building.md#the-full-game))
+   put them in `tmp/disks` (see [Building](docs/building.md#the-full-game)),
+   with the expansions' too if you have them
 1. Run `./build.sh --full`, which takes about half an hour; for the films,
    install [ffmpeg](https://ffmpeg.org) first
 1. Copy `ANNIHILA.TOS` and the `DATA` folder in `dist/full` to a folder on
@@ -85,7 +89,8 @@ See [Playing](docs/playing.md) for the rest.
 
 - Atari TT030 with TOS 3.06, 2MB ST-RAM and 4MB TT-RAM
 - A colour monitor for TT medium resolution
-- About 7MB of hard disk space for the demo, or 300MB for the full game
+- About 7MB of hard disk space for the demo, 300MB for the full game, or
+  600MB with its expansions
 - Experimental: a Falcon030 with a VGA monitor, an RGB monitor or a TV,
   and 6MB free RAM (see [On a Falcon](docs/falcon.md))
 

@@ -31,7 +31,8 @@ _Static_assert(sizeof(Campaign) == 30, "Campaign must match GAME.DAT");
 _Static_assert(sizeof(MissionInfo) == 54, "MissionInfo must match GAME.DAT");
 _Static_assert(sizeof(Track) == 6, "Track must match GAME.DAT");
 _Static_assert(sizeof(WeaponType) == 40, "WeaponType must match UNITS.DAT");
-_Static_assert(sizeof(UnitType) == 180, "UnitType must match UNITS.DAT");
+_Static_assert(sizeof(UnitType) == 228, "UnitType must match UNITS.DAT");
+_Static_assert(MAX_UNITTYPES % 16 == 0, "a mission's allowed list keeps what follows it even");
 _Static_assert(sizeof(FeatureType) == 38, "FeatureType must match UNITS.DAT and the missions'");
 _Static_assert(sizeof(PlacedUnit) == 14, "PlacedUnit must match the missions'");
 
@@ -159,6 +160,8 @@ int load_game(void) {
         return wrong_version("GAME.DAT");
     ncampaigns = rd16(f + 4);
     nmissions = rd16(f + 6);
+    if (ncampaigns > MAX_CAMPAIGNS)
+        return wrong_version("GAME.DAT");
     /* f + 8: the worlds, which each mission names */
     ntracks = rd16(f + 10);
     p = f + 16;
@@ -191,7 +194,7 @@ int load_units(void) {
     nweapons = rd16(f + 4);
     nunittypes = rd16(f + 6);
     nclasses = rd16(f + 8);
-    if (memcmp(f, "OAU3", 4) || nunittypes > MAX_UNITTYPES || nclasses > MAX_CLASSES)
+    if (memcmp(f, "OAU4", 4) || nunittypes > MAX_UNITTYPES || nclasses > MAX_CLASSES)
         return wrong_version("UNITS.DAT");
     /* each class's slope and depths: the converter's alone */
     p = f + 10 + nclasses * 3;
@@ -396,7 +399,7 @@ int load_mission(int n) {
     if (!f)
         return 0;
     mission.block = f;
-    if (memcmp(f, "OAM3", 4) || rd16(f + 44 + 20) > 8 || rd16(f + 44 + 28) > 3)
+    if (memcmp(f, "OAM4", 4) || rd16(f + 44 + 20) > 8 || rd16(f + 44 + 28) > 3)
         return wrong_version(name);
     memcpy(mission.name, f + 4, 40);
     p = f + 44;
@@ -427,7 +430,7 @@ int load_mission(int n) {
     mission.need = (uint16_t*)p;
     p += mission.nneed * 2;
     mission.allowed = p;
-    p += 32;
+    p += MAX_UNITTYPES / 8;
     mission.ftypes = (FeatureType*)p;
     p += mission.nftypes * sizeof(FeatureType);
     mission.featpos = (uint16_t*)p;

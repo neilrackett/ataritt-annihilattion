@@ -2,8 +2,9 @@
 
 AnnihilaTTion plays Total Annihilation's own missions, units and maps,
 converted for the TT on a modern computer: the free demo's, or the full
-game's from your own CDs. Neither is part of this repository: you download
-the demo, or make images of your CDs, and `build.sh` does the rest.
+game's from your own CDs, with its two expansions' if you have those too.
+None of them is part of this repository: you download the demo, or make
+images of your CDs, and `build.sh` does the rest.
 
 ## What you need
 
@@ -57,11 +58,10 @@ progress there.
 
 ## The full game
 
-The full game comes from images of its two CDs (Total Annihilation, 1997,
-without the expansion packs): a CUE sheet with its BIN or IMG, or an ISO,
-for each disc. Put them in `tmp/disks`, in folders whose names include
-`DISK1` and `DISK2` (for example `tmp/disks/Base Game/DISK1/Total.cue`), or
-pass their paths:
+The full game comes from images of its two CDs (Total Annihilation, 1997):
+a CUE sheet with its BIN or IMG, or an ISO, for each disc. Put them in
+`tmp/disks`, in folders whose names include `DISK1` and `DISK2` (for
+example `tmp/disks/Base Game/DISK1/Total.cue`), or pass their paths:
 
 ```
 ./build.sh --full [DISC1 DISC2]
@@ -70,7 +70,8 @@ pass their paths:
 1. The CDs are unpacked into `tmp/ta-full` (`tools/cd_extract.py`), the
    first time only: the game data the installer would copy, then the
    discs' own archives over it, the first disc's audio tracks (the music,
-   which needs the CUE sheet) and its films.
+   which needs the CUE sheet) and its films. Then the expansions' discs,
+   if they are there (see below).
 2. The full game's data is converted (`tools/convert.py`, about half an
    hour) into `dist/full/DATA`, with pictures of the converted art in
    `build/previews-full`: both campaigns' 50 missions, the 24 multiplayer
@@ -81,6 +82,20 @@ pass their paths:
 Copy `ANNIHILA.TOS` and the `DATA` folder in `dist/full` (about 300 MB) to
 a folder on the TT's hard disk and run `ANNIHILA.TOS` from it. `DATA=dist/full tools/play_hatari.sh`
 plays it in Hatari.
+
+### The expansions
+
+The Core Contingency and Battle Tactics (1998) come from images of their
+CDs, ISOs or CUE sheets, in folders of `tmp/disks` whose names say
+`Contingency` and `Tactics` (for example `tmp/disks/Core Contingency
+Expansion/TACC.ISO`). Either or both will do. With them there,
+`./build.sh --full` unpacks each into a folder of its own beside the full
+game's data, `tmp/ta-full/cc` and `tmp/ta-full/bt`, the first time only,
+and converts it with the full game into `dist/full`: The Core
+Contingency's two campaigns and Battle Tactics' eight, their units, worlds
+and maps, and more skirmishes. That takes about an hour and a half, and `DATA`
+grows to about 600 MB. `OA_EXPANSIONS=cc`, `bt` or `none` converts only
+those, or the full game alone.
 
 Each push to `main` also builds `ANNIHILA.TOS` on GitHub and puts it on the
 [latest release](https://github.com/neilrackett/ataritt-annihilattion/releases/tag/latest)

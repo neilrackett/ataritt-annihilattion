@@ -23,13 +23,11 @@ def textures():
     """Every texture of textures/*.gaf: name -> list of frames as RGB arrays."""
     global _textures
     if _textures is None:
-        import os
         pal = np.array(ta.palette(), dtype=np.float32)
         _textures = {}
-        folder = ta.path('textures')
-        for f in sorted(os.listdir(folder)):
+        for f in ta.listdir('textures'):
             if f.lower().endswith('.gaf'):
-                for name, frames in ta.read_gaf(os.path.join(folder, f)).items():
+                for name, frames in ta.read_gaf(ta.path('textures', f)).items():
                     _textures[name] = [pal[np.array(fr[4], dtype=np.int32).reshape(fr[1], fr[0])] for fr in frames]
     return _textures
 

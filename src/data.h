@@ -15,16 +15,22 @@
 #include <stdint.h>
 
 #define TICKS 15          /* simulation ticks a second */
-#define MAX_UNITTYPES 255 /* a unit type is a byte; 255 is none */
-#define NO_TYPE 255
-#define MAX_BUILD 24 /* build options a unit type holds */
+#define MAX_UNITTYPES 320 /* the expansions' units with the game's, and a mission's allowed list's bits */
+#define NO_TYPE 0xFFFF
+#define MAX_BUILD 32 /* build options a unit type holds */
 #define MAX_CLASSES 6 /* move classes: a map cell's flags have six bits for them */
 
 /* ---------------------------------------------------------------- the game */
 
+/* Campaign.game: whose campaign it is */
+enum { GAME_TA, GAME_CC, GAME_BT };
+
+#define MAX_CAMPAIGNS 32
+
 typedef struct {
     char name[24];
-    uint8_t side, pad; /* 0 Arm, 1 Core, 2 a skirmish's maps */
+    uint8_t side;          /* 0 Arm, 1 Core, 2 a skirmish's maps */
+    uint8_t game;          /* GAME_*: the original's, The Core Contingency's, Battle Tactics' */
     uint16_t first, count; /* its missions in missions[] */
 } Campaign;                /* 30 bytes */
 
@@ -104,13 +110,14 @@ enum { UK_MOBILE, UK_BUILDING, UK_FACTORY };
 #define UF_JAMMER (1UL << 25)
 #define UF_REPAIR (1UL << 26) /* repairs */
 #define UF_ACTIVE (1UL << 27) /* switched on when built: pays its upkeep */
+#define UF_HOVER (1UL << 28)  /* a hovercraft: over water, on its surface */
 
 typedef struct {
     char name[10];
     char title[20];
     char desc[32];
     uint8_t side, kind, footx, footz, moveclass, nbuild;
-    int8_t weapon[3], explode;
+    int16_t weapon[3], explode;
     uint32_t flags;
     uint16_t maxhp, speed, accel, turn, sight, builddist, workertime, cruisealt, radar;
     uint32_t metalcost, energycost, buildtime;
@@ -118,11 +125,12 @@ typedef struct {
     uint8_t ndirs, radius;
     int16_t top, snd_select, snd_ok;
     int16_t corpse; /* its wreck, a feature type (wreck_feat()), or -1 */
-    int8_t selfd;   /* the weapon it blows up with when it destroys itself */
-    uint8_t minwater, maxwater, maxslope; /* where a building may stand */
-    uint8_t build[MAX_BUILD]; /* NO_TYPE past nbuild */
+    int16_t selfd;  /* the weapon it blows up with when it destroys itself */
+    uint8_t minwater, maxwater, maxslope, pad; /* where a building may stand */
+    uint16_t build[MAX_BUILD]; /* NO_TYPE past nbuild */
     uint8_t yard[8];
-} UnitType; /* 180 bytes */
+    uint16_t pad2;
+} UnitType; /* 228 bytes */
 
 /* ---------------------------------------------------------------- features */
 

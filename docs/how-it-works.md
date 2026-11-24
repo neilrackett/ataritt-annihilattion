@@ -2,8 +2,9 @@
 
 AnnihilaTTion is a small engine written in C for the 68030, with a converter
 in Python that turns Total Annihilation's data into what that engine reads:
-the free demo's, or the full game's from its CDs. The demo and the full game
-convert to the same files, so one program plays both.
+the free demo's, or the full game's from its CDs, with its two expansions'
+from theirs when they are there. They all convert to the same files, so one
+program plays them all.
 
 ## The converter
 
@@ -13,23 +14,25 @@ OTA and GUI text, GAF pictures, 3DO models, TNT maps) and writes, into the
 
 | File | What it holds |
 | --- | --- |
-| `GAME.DAT` | the campaigns, their missions in order (a skirmish's maps as a third), and the music's tracks |
+| `GAME.DAT` | the campaigns, each with the game it comes from, their missions in order (a skirmish's maps as the last), and the music's tracks |
 | `UNITS.DAT` | the weapon and unit tables, and each unit's wreck |
 | `COMMON.DAT` | the font and the fog's edges |
 | `SOUNDS.DAT` | the sound effects, signed 8-bit |
 | `WORLD1.DAT` ... | a world's palette, explosions, cursors and titles, and how the game palette's colours look in it |
 | `WORLD1.SPR` ... | every unit's sprites, wreck and build picture in a world's colours |
 | `PANEL1A.DAT`, `PANEL1C.DAT` ... | the panels round the battlefield and the order buttons, Arm's and Core's, in a world's colours |
-| `AC01.DAT` ... `SK01.DAT` ... | a mission's or a skirmish's map tiles, heights, metal, features, objectives, scripts, placed units and the units the player may build |
+| `AC01.DAT` ... `CC001.DAT` ... `BT001.DAT` ... `SK01.DAT` ... | a mission's or a skirmish's map tiles, heights, metal, features, objectives, scripts, placed units and the units the player may build: the original's named after their maps, The Core Contingency's and Battle Tactics' numbered, as their maps' names are long |
 | `AC01.TXT`, `AC01.SND`, `AC01.IMG` ... | its briefing's text, its narration at 12517 Hz and its loading picture |
 | `TITLE.IMG`, `SINGLE.IMG`, `BRIEFARM.IMG`, `BRIEFCOR.IMG` | full-screen pictures with their own palettes |
 | `MUSIC02.SND` ... | the full game's music, from the CD's audio tracks, at 12517 Hz |
 | `FILM1.DAT`, `FILM1.SND` ... | the full game's films, and their sound |
 
-The missions are those the campaigns in `camps/` list whose maps are there:
-the demo's three, or the full game's 25 for each side. The full game's other
-maps, its multiplayer ones, become skirmishes where they fit the TT's memory:
-a Commander at each of the first two start positions, and the enemy's to
+The missions are those the campaigns in `camps/` list whose maps are there
+and fit the TT's memory: the demo's three, the full game's 25 for each side,
+and the expansions': The Core Contingency's 12 for each side, and 92 of
+Battle Tactics' 100 in its eight campaigns. The full game's other maps, its
+multiplayer ones and the expansions', become skirmishes where they fit: a
+Commander at each of the first two start positions, and the enemy's to
 kill. Each world (an OTA's
 planet: green, archipelago, desert, lava and so on) has a palette of its own,
 chosen from its maps and the units, so a mission's map, units and panels are
@@ -46,7 +49,17 @@ checking.
 
 The full game's data comes off its two CDs first (`tools/cd_extract.py`): the
 archives the installer would copy, the CD's audio tracks as WAV, and the
-films. The films are Smacker; ffmpeg decodes them, where there is one, and
+films. Each expansion's disc goes into a folder of its own beside the game's
+data, which the converter reads over it in the order the game does (`ta.py`
+looks through them all, the last one's files winning): The Core
+Contingency's units, worlds, maps and missions, then Battle Tactics'. A
+campaign belongs to the first of them that has its file, so The Core
+Contingency's new copies of the original's campaigns stay the original's.
+The expansions add to builders' menus through their `download/` files, and
+bring the units to 272 and the weapons to 179, so unit types and weapons are
+16-bit numbers. Their sounds would not fit the ST-RAM the full game's leave,
+so past a budget the longest are cut shorter, and then more play at the
+lower rate. The films are Smacker; ffmpeg decodes them, where there is one, and
 the converter keeps every other frame at 320x240, in TT low resolution's 256
 colours, writing only the 16-pixel groups whose colours change noticeably.
 It also keeps each film within what a TT can read as it plays: where a
@@ -101,9 +114,10 @@ looks for a place out of reach; 64-pixel buckets for finding units, and
 256-pixel cells of each side's units for searches further afield; line of
 sight and radar, worked out again when the player's units move; aircraft
 that fly straight at their height, ships on the water and submarines under
-it, each weapon hitting only what it can reach; the economy, summed again
-when a unit is finished, destroyed or captured; captures and repairs; silos' missiles and the systems that
-shoot them down; the missions' scripts and objectives; and a computer player
+it, hovercraft over land and water alike, each weapon hitting only what it
+can reach; the economy, summed again when a unit is finished, destroyed or
+captured; captures and repairs; mines and crawling bombs that go off beside
+an enemy; silos' missiles and the systems that shoot them down; the missions' scripts and objectives; and a computer player
 that builds from idle factories, attacks in waves and fires its missiles,
 and in a skirmish builds its base from its Commander up.
 

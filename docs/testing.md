@@ -17,8 +17,8 @@ program's log is `OALOG.TXT` there, and every shot the script took is a PNG.
 - `CLOCK` sets the CPU's speed in MHz, such as `CLOCK=16`.
 
 `tools/test_missions.sh SCRIPT [MISSION...]` runs a script on each of the
-full game's missions and skirmish maps in turn, or those named
-(`ac05 cc12 sk01`), with the game in
+full game's missions and skirmish maps in turn, the expansions' too, or
+those named (`ac05 cc12 cc001 bt042 sk01`), with the game in
 `dist/full`: the script's word `MISSION` becomes the mission's name, and a
 line a mission says how it ended and what the units' sprites took.
 
@@ -26,8 +26,8 @@ line a mission says how it ended and what the units' sprites took.
 
 A script starts with `mission N DIFFICULTY` (or `menu`, for the menus) and
 then gives one command a line. N is the mission's number, 1 on, or its
-file's name, such as `ac05`; for a skirmish (`sk01` on), `core` after the
-difficulty plays Core.
+file's name, such as `ac05`, or `cc001` and `bt001` for the expansions'; for
+a skirmish (`sk01` on), `core` after the difficulty plays Core.
 
 | Command | What it does |
 | --- | --- |
@@ -72,6 +72,9 @@ and, for the full game with `tools/test_missions.sh`, in `tests/full/`:
   its objectives (`win.txt`)
 - ten minutes of a skirmish, the computer building its base and attacking
   (`skirmish.txt`, on the `sk` maps)
+- the menus with the expansions: the campaigns by game, a Battle Tactics
+  campaign with every mission open, the Arm campaign's missions and a
+  briefing (`menu.txt`, with `tools/test_hatari.sh` and `DATA=dist/full`)
 
 The web converter has its own test: `pnpm test` in `web/` converts the
 installer through Pyodide and checks every file against `dist/DATA`

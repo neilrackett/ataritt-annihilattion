@@ -28,7 +28,18 @@ static const char* difficulty_names[3] = {"Easy", "Medium", "Hard"};
 
 /* How far the player has got in each campaign: the missions open to play,
  * kept in PROGRESS.DAT */
-static uint8_t progress[8];
+static uint8_t progress[MAX_CAMPAIGNS];
+
+static const char* game_names[3] = {"TOTAL ANNIHILATION", "THE CORE CONTINGENCY", "BATTLE TACTICS"};
+
+/* A campaign's name for its screens: an expansion's with the expansion's */
+static const char* campaign_title(int c) {
+    static char s[64];
+    if (campaigns[c].game == GAME_TA || campaigns[c].side == 2)
+        return campaigns[c].name;
+    sprintf(s, "%s: %s", game_names[campaigns[c].game < 3 ? campaigns[c].game : 0], campaigns[c].name);
+    return s;
+}
 
 static void load_progress(void) {
     long fh = data_open("PROGRESS.DAT");
@@ -678,15 +689,123 @@ static int title_screen(uint8_t* pic, const uint16_t* pal) {
     }
 }
 
+/* The bottom row's buttons, under a box of text */
+static const Slot start_slot = {120, 424, 280, 452}, back_slot = {360, 424, 520, 452};
+
+static int on_slot(const Slot* sl, int x, int y) {
+    return x >= sl->x0 && x <= sl->x1 && y >= sl->y0 && y <= sl->y1;
+}
+
+/* A row of the campaigns' list: a game's name (c -1) or a campaign */
+typedef struct {
+    int16_t x, y, c;
+} ListRow;
+
+/* Lays the campaigns out in two columns, a game's under its name, each
+ * game in the first column while it holds half the rows; returns the rows */
+static int campaign_rows(ListRow* rows) {
+    int c, n = 0, total = 0, used[2] = {0, 0};
+    for (c = 0; c < ncampaigns; c++)
+        total += 1 + (campaigns[c].side != 2 && (!c || campaigns[c].game != campaigns[c - 1].game ||
+                                                 campaigns[c - 1].side == 2));
+    for (c = 0; c < ncampaigns;) {
+        int k = c + 1, size, col, y;
+        if (campaigns[c].side != 2)
+            while (k < ncampaigns && campaigns[k].side != 2 && campaigns[k].game == campaigns[c].game)
+                k++;
+        size = (k - c) + (campaigns[c].side != 2);
+        col = !used[0] || used[0] + 1 + size <= (total + 1) / 2 + 1 ? 0 : 1;
+        if (used[col])
+            used[col]++; /* a row between games */
+        y = 84 + used[col] * 22;
+        if (campaigns[c].side != 2) {
+            rows[n].x = (int16_t)(60 + col * 270);
+            rows[n].y = (int16_t)y;
+            rows[n++].c = (int16_t)(-1 - campaigns[c].game);
+            y += 22;
+        }
+        for (; c < k; c++, y += 22) {
+            rows[n].x = (int16_t)(60 + col * 270 + (campaigns[c].side != 2) * 16);
+            rows[n].y = (int16_t)y;
+            rows[n++].c = (int16_t)c;
+        }
+        used[col] += size;
+    }
+    return n;
+}
+
+/* The single player screen with more campaigns than its slots hold (the
+ * expansions'): a list of them by game, and the difficulty and BACK under
+ * it. Returns the campaign chosen, or -1 to go back */
+static int campaign_list(int* difficulty, const char* note) {
+    uint16_t pal[16];
+    uint8_t* pic = load_picture("SINGLE.IMG", pal);
+    uint8_t prev = (uint8_t)input_buttons();
+    ListRow rows[MAX_CAMPAIGNS * 2];
+    int nrows = campaign_rows(rows), result = -1;
+    if (pic)
+        tt_set_palette(pal);
+    for (;;) {
+        uint16_t k;
+        int i, x, y, hover = -1, click;
+        click = menu_input(&x, &y, &prev, &k);
+        if (test_quit)
+            break;
+        boxed_screen(pic, "SINGLE PLAYER");
+        for (i = 0; i < nrows; i++) {
+            const ListRow* r = &rows[i];
+            if (r->c < 0) {
+                gfx_text(tt_back, r->x, r->y, game_names[-1 - r->c], C_WHITE);
+                continue;
+            }
+            if (x >= r->x - 4 && x < r->x + 250 && y >= r->y - 3 && y < r->y + 17)
+                hover = r->c;
+            gfx_text(tt_back, r->x, r->y, campaigns[r->c].name, hover == r->c ? C_YELLOW : C_SILVER);
+        }
+        if (note)
+            gfx_text_box(tt_back, 60, 360, 520, note, C_YELLOW);
+        draw_slot(tt_back, &start_slot, difficulty_names[*difficulty], on_slot(&start_slot, x, y), 1);
+        draw_slot(tt_back, &back_slot, "BACK", on_slot(&back_slot, x, y), 1);
+        draw_arrow(tt_back, x, y);
+        tt_flip();
+        if ((k & 0xFF) >= '1' && (k & 0xFF) <= '9' && (k & 0xFF) - '1' < ncampaigns) {
+            result = (k & 0xFF) - '1';
+            break;
+        }
+        if ((k >> 8) == 1)
+            break;
+        if ((k & 0xDF) == 'D')
+            *difficulty = (*difficulty + 1) % 3;
+        if (click) {
+            if (hover >= 0) {
+                snd_play(SND_BUTTON, 1);
+                result = hover;
+                break;
+            }
+            if (on_slot(&start_slot, x, y)) {
+                snd_play(SND_BUTTON, 1);
+                *difficulty = (*difficulty + 1) % 3;
+            }
+            if (on_slot(&back_slot, x, y))
+                break;
+        }
+    }
+    tt_free(pic);
+    return result;
+}
+
 /* The single player screen: in its first slots the demo's missions, or the
  * full game's campaigns; then the difficulty and BACK. Returns the one
  * chosen (a mission for the demo, a campaign else), or -1 to go back */
 static int single_screen(int* difficulty, const char* note) {
     uint16_t pal[16];
-    uint8_t* pic = load_picture("SINGLE.IMG", pal);
-    uint8_t prev = (uint8_t)input_buttons();
+    uint8_t *pic, prev;
     int demo = is_demo(), result = -1;
     int n = demo ? campaigns[0].count : ncampaigns < 3 ? ncampaigns : 3, ty = demo ? 220 : 400;
+    if (!demo && ncampaigns > 3)
+        return campaign_list(difficulty, note);
+    pic = load_picture("SINGLE.IMG", pal);
+    prev = (uint8_t)input_buttons();
     if (pic)
         tt_set_palette(pal);
     for (;;) {
@@ -751,12 +870,8 @@ static int single_screen(int* difficulty, const char* note) {
     return result;
 }
 
-/* The briefing's buttons */
-static const Slot start_slot = {120, 424, 280, 452}, back_slot = {360, 424, 520, 452};
-
-static int on_slot(const Slot* sl, int x, int y) {
-    return x >= sl->x0 && x <= sl->x1 && y >= sl->y0 && y <= sl->y1;
-}
+/* The missions a mission screen's page lists, in two columns */
+#define PAGE_MISSIONS 26
 
 /* A campaign's missions, those reached open: the one chosen, as an index
  * in missions[], or -1 to go back */
@@ -765,23 +880,39 @@ static int mission_screen(int c) {
     uint16_t pal[16];
     uint8_t* pic = load_picture(cp->side == 1 ? "BRIEFCOR.IMG" : "BRIEFARM.IMG", pal);
     uint8_t prev = (uint8_t)input_buttons();
-    int result = -1, rows = (cp->count + 1) / 2, skirmish = cp->side == 2;
+    /* Battle Tactics' missions may be played in any order, as there */
+    int result = -1, skirmish = cp->side == 2, any = skirmish || cp->game == GAME_BT;
+    int pages = (cp->count + PAGE_MISSIONS - 1) / PAGE_MISSIONS, page = 0;
+    static const Slot more_slot = {500, 48, 590, 64};
     if (pic)
         tt_set_palette(pal);
     for (;;) {
         uint16_t k;
         int i, x, y, hover = -1, click;
+        int first = page * PAGE_MISSIONS, n = cp->count - first < PAGE_MISSIONS ? cp->count - first : PAGE_MISSIONS;
+        int rows = (n + 1) / 2;
         click = menu_input(&x, &y, &prev, &k);
         if (test_quit)
             break;
-        boxed_screen(pic, cp->name);
-        for (i = 0; i < cp->count; i++) {
-            int col = i / rows, row = i % rows, mx = 60 + col * 270, my = 84 + row * 24;
-            int open = skirmish || i < progress[c];
+        boxed_screen(pic, campaign_title(c));
+        for (i = first; i < first + n; i++) {
+            int col = (i - first) / rows, row = (i - first) % rows, mx = 60 + col * 270, my = 84 + row * 24;
+            int open = any || i < progress[c];
             if (open && x >= mx - 4 && x < mx + 264 && y >= my - 3 && y < my + 17)
                 hover = i;
             gfx_text(tt_back, mx, my, missions[cp->first + i].name,
                      !open ? C_GREY : hover == i ? C_YELLOW : C_SILVER);
+        }
+        if (pages > 1) {
+            char s[24];
+            sprintf(s, "MORE %d/%d", page + 1, pages);
+            gfx_text(tt_back, more_slot.x0, more_slot.y0 + 4, s,
+                     on_slot(&more_slot, x, y) ? C_YELLOW : C_SILVER);
+            if (click && on_slot(&more_slot, x, y)) {
+                snd_play(SND_BUTTON, 1);
+                page = (page + 1) % pages;
+                continue;
+            }
         }
         draw_slot(tt_back, &back_slot, "BACK", on_slot(&back_slot, x, y), 1);
         if (skirmish)
@@ -923,11 +1054,15 @@ static int play_from(int m, int difficulty, const char** note) {
             if (m + 1 >= campaigns[c].first + campaigns[c].count) {
                 if (is_demo()) {
                     *note = "&YVictory!&W You have won the Total Annihilation demo campaign.";
-                } else {
+                } else if (campaigns[c].game == GAME_TA) {
                     *note = campaigns[c].side ? "&YVictory!&W The Core campaign is won."
                                               : "&YVictory!&W The Arm campaign is won.";
                     if (film(campaigns[c].side ? FILM_CORE_WINS : FILM_ARM_WINS))
                         film(FILM_CREDITS);
+                } else {
+                    static char won[96];
+                    sprintf(won, "&YVictory!&W %s is won.", campaign_title(c));
+                    *note = won;
                 }
                 return 1;
             }

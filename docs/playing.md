@@ -1,7 +1,8 @@
 # Playing AnnihilaTTion
 
 AnnihilaTTion plays whichever data you give it: the free demo's, or the full
-game's, converted from your own CDs ([building](building.md)).
+game's, converted from your own CDs, with its two expansions' if you have
+them too ([building](building.md)).
 
 ## What it plays
 
@@ -29,6 +30,19 @@ The full game:
 - The CD's music, calm while you build and loud while you fight, and the
   films: the Cavedog logo and the introduction at the start, and each side's
   victory and the credits at the end of its campaign.
+
+With the expansions, The Core Contingency and Battle Tactics (1998), as
+well:
+
+- The Core Contingency's two campaigns, Arm's and Core's, 12 missions each,
+  on its new worlds: Acid, Crystal, Lusch, Slate, Urban and Water.
+- Battle Tactics' eight campaigns, each side's very short, short, medium and
+  long: 92 of its 100 missions, any of them at any time, as there.
+- Their 115 units, 272 in all: hovercraft and their platforms, seaplanes,
+  mines, flak, underwater buildings and the rest, on the builders' menus
+  where the expansions put them.
+- Skirmishes on 40 maps, the expansions' among them.
+- The single player screen lists the campaigns by game.
 
 In both:
 
@@ -72,12 +86,15 @@ These are the compromises the TT needs, and they are deliberate:
   overlap; paths are found on 32-pixel cells; the original's unit scripts
   (COB) do not run.
 - Aircraft hover where they stop instead of landing, and transports carry
-  nothing; there is no cloaking, and jammers hide nothing.
+  nothing; there is no cloaking, and jammers hide nothing. With the
+  expansions, the targeting facility finds nothing for your units, and acid
+  seas harm nothing.
 - Sound is mono at 12517 Hz: four effects at a time over the narration or
   the music. The films play at 15 frames a second, 320x240 in 256 colours,
   each line on every other line of the screen.
-- The other 13 multiplayer maps are too large for the TT's memory, and a
-  skirmish has one computer player.
+- The other 13 multiplayer maps are too large for the TT's memory (56 with
+  the expansions'), and so are eight of Battle Tactics' missions and The
+  Core Contingency's Krogoth Encounter. A skirmish has one computer player.
 - No saved games, multiplayer or options beyond sound and difficulty.
 
 ## Controls

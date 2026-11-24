@@ -1,9 +1,11 @@
 # Copyright (C) 2026 Neil Rackett
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""Unpacks the Total Annihilation CDs (1997) for the converter.
+"""Unpacks the Total Annihilation CDs (1997) for the converter, and those of
+its expansions, The Core Contingency and Battle Tactics (1998).
 
 usage: cd_extract.py DISC1 DISC2 OUT_DIR
+       cd_extract.py EXPANSION OUT_DIR
 
 DISC1 and DISC2 are the two discs' images, in either order: a CUE sheet
 with its BIN or IMG (raw 2352-byte sectors), the IMG alone (its CUE beside
@@ -15,6 +17,11 @@ receives:
             TOTALA4.HPI over it; lower-case names, like the demo's
   music/    the first disc's audio tracks as WAV, track02.wav ..
   video/    the Smacker films, DATA/1.ZRB .. as 1.smk ..
+
+An expansion's disc goes into a folder of its own beside data/, which the
+converter reads over it: cc/ The Core Contingency's archives (its units,
+maps and missions), bt/ Battle Tactics' (its units, maps and the TACTICS
+missions), each in the order the game reads them.
 """
 import os, re, struct, sys, wave
 
@@ -124,7 +131,30 @@ class Disc:
         return None
 
 
+# An expansion's disc: the archive that tells which it is, its folder beside
+# data/, and its archives, each over the last
+EXPANSIONS = [
+    ('CC/CCDATA.CCX', 'cc', ['CC/CCDATA.CCX', 'CC/CCMAPS.CCX', 'CC/CCMISS.CCX']),
+    ('BT/BTDATA.CCX', 'bt', ['BT/BTDATA.CCX', 'BT/BTMAPS.CCX'] + ['BT/TACTICS%d.HPI' % i for i in range(1, 9)]),
+]
+
+
+def expansion(disc, out):
+    d = Disc(disc)
+    for mark, folder, archives in EXPANSIONS:
+        if mark in d.files:
+            break
+    else:
+        sys.exit('%s is neither The Core Contingency nor Battle Tactics' % disc)
+    dst = os.path.join(out, folder)
+    for a in archives:
+        print(a, Hpi(d.read(a)).extract(dst), 'files')
+
+
 def main():
+    if len(sys.argv) == 3:
+        expansion(sys.argv[1], sys.argv[2])
+        return
     if len(sys.argv) != 4:
         sys.exit(__doc__)
     discs = [Disc(sys.argv[1]), Disc(sys.argv[2])]

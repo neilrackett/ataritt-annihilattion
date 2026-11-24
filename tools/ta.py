@@ -9,21 +9,80 @@ indices, 3DO objects as trees of vertices and primitives.
 """
 import functools, os, re, struct
 
-ROOT = None  # folder the demo's archive was unpacked into
+ROOT = None  # folder the game's archives were unpacked into
+OVER = []    # folders unpacked over it, as the expansions' are: the last one wins
+
+
+def _roots():
+    """The folders to look in, the one that wins first."""
+    return list(reversed(OVER)) + [ROOT]
+
+
+@functools.lru_cache(maxsize=None)
+def _names(folder):
+    """A folder's names, by their lower case."""
+    return {n.lower(): n for n in os.listdir(folder)}
+
+
+def _find(root, parts):
+    p = root
+    for part in parts:
+        name = _names(p).get(part.lower()) if os.path.isdir(p) else None
+        if name is None:
+            return None
+        p = os.path.join(p, name)
+    return p
 
 
 def path(*parts):
-    """Finds a file under ROOT whatever the case of its name."""
-    p = ROOT
-    for part in '/'.join(parts).split('/'):
-        want = part.lower()
-        for name in os.listdir(p):
-            if name.lower() == want:
-                p = os.path.join(p, name)
-                break
-        else:
-            return None
-    return p
+    """Finds a file under ROOT, or a folder over it, whatever the case of its
+    name; the last of OVER that has it wins."""
+    parts = '/'.join(parts).split('/')
+    for r in _roots():
+        p = _find(r, parts)
+        if p:
+            return p
+    return None
+
+
+def lowest(*parts):
+    """The first folder, ROOT or else the first of OVER, that has a file:
+    where it came from, before anything over it replaced it."""
+    parts = '/'.join(parts).split('/')
+    for r in reversed(_roots()):
+        if _find(r, parts):
+            return r
+    return None
+
+
+def _merged(folder):
+    """{lower-case name: full path} in folder, every root's, the winner's
+    where two have the same name."""
+    parts = folder.split('/')
+    out = {}
+    for r in reversed(_roots()):
+        p = _find(r, parts)
+        if p and os.path.isdir(p):
+            for n in os.listdir(p):
+                out[n.lower()] = os.path.join(p, n)
+    return out
+
+
+def listdir(folder):
+    """The names in folder in every root, sorted."""
+    return sorted(os.path.basename(p) for p in _merged(folder).values())
+
+
+def walk(folder):
+    """Every file under folder in every root: [full path], each folder's files
+    before its folders', all in name order, as os.walk with sorted lists."""
+    out = []
+    entries = sorted(_merged(folder).items(), key=lambda kv: os.path.basename(kv[1]))
+    out += [p for _, p in entries if not os.path.isdir(p)]
+    for k, p in entries:
+        if os.path.isdir(p):
+            out += walk(folder + '/' + os.path.basename(p))
+    return out
 
 
 # ---------------------------------------------------------------- TDF text
@@ -188,6 +247,12 @@ def read_3do(p):
 
 class Tnt:
     pass
+
+
+def tnt_size(p):
+    """A TNT map's width and height in 16-pixel cells, from its header alone."""
+    with open(p, 'rb') as f:
+        return struct.unpack_from('<2I', f.read(12), 4)
 
 
 def read_tnt(p):

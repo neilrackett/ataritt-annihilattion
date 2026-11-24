@@ -31,8 +31,10 @@ int feat_dirty_x0, feat_dirty_y0, feat_dirty_x1 = -1, feat_dirty_y1 = -1;
 int view_x0, view_y0, view_x1, view_y1;
 char sim_message[64];
 int32_t sim_message_tick = -1000;
+uint32_t sim_roster;
 
-#define BUCKET 64
+#define BUCKET_SHIFT 6
+#define BUCKET (1 << BUCKET_SHIFT)
 #define PATH_NODES 4000
 
 /* What the sim keeps for the map, sized to it when a mission starts (one
@@ -42,11 +44,20 @@ int32_t sim_message_tick = -1000;
 static void* map_block;
 static int bw, bh; /* buckets across and down */
 static int16_t* bucket;
+/* each row of buckets' first, and each row of coarse cells', so that
+ * filling them takes no multiply; MAX_BROWS rows are 65536 pixels, more
+ * than a mission's memory allows */
+#define MAX_BROWS 1024
+static uint16_t brow[MAX_BROWS], crow[MAX_BROWS / 4];
+/* the heads build_buckets() filled, to empty when it fills them again */
+static int16_t* filled[2 * MAX_UNITS];
+static int nfilled;
 /* The searches wider than three buckets go through coarser cells of 4 x 4
  * buckets, a side's units only: per side, each cell's first unit, linked on
  * through cnext; reach is the furthest a unit moves in a tick, after the
  * cells were filled */
-#define COARSE 4
+#define COARSE_SHIFT 2
+#define COARSE (1 << COARSE_SHIFT)
 static int cw, ch;
 static int16_t* coarse[2];
 static int16_t cnext[MAX_UNITS];
@@ -174,8 +185,12 @@ static int unit_alt(const Unit* u) {
     return (t->flags & UF_FLY) && !(u->flags & UF_UNBUILT) ? t->cruisealt : 0;
 }
 
+int unit_lift(const Unit* u) {
+    return unit_alt(u) / 2;
+}
+
 int unit_draw_y(const Unit* u) {
-    return unit_screen_y(u) - unit_alt(u) / 2;
+    return unit_screen_y(u) - unit_lift(u);
 }
 
 static int flies(const Unit* u) {
@@ -690,30 +705,29 @@ static void paths_step(void) {
 
 static void build_buckets(void) {
     int i;
-    /* every entry -1, none a unit */
-    memset(bucket, 0xFF, (size_t)bw * bh * sizeof bucket[0]);
-    memset(coarse[0], 0xFF, (size_t)2 * cw * ch * sizeof coarse[0][0]);
-    for (i = 0; i < unit_hi; i++) {
-        Unit* u = &units[i];
-        int bx, bz, b;
+    Unit* u = units;
+    /* empty what the last time filled: every head -1 again, none a unit */
+    while (nfilled)
+        *filled[--nfilled] = -1;
+    for (i = 0; i < unit_hi; i++, u++) {
+        int bx, bz;
+        int16_t *b, *c;
         if (!u->alive)
             continue;
-        bx = (u->x >> FIX) / BUCKET;
-        bz = (u->z >> FIX) / BUCKET;
-        if (bx < 0)
-            bx = 0;
-        if (bz < 0)
-            bz = 0;
-        if (bx >= bw)
-            bx = bw - 1;
-        if (bz >= bh)
-            bz = bh - 1;
-        b = bz * bw + bx;
-        u->next = bucket[b];
-        bucket[b] = (int16_t)i;
-        b = bz / COARSE * cw + bx / COARSE;
-        cnext[i] = coarse[u->owner][b];
-        coarse[u->owner][b] = (int16_t)i;
+        bx = u->x >> (FIX + BUCKET_SHIFT);
+        bz = u->z >> (FIX + BUCKET_SHIFT);
+        if ((unsigned)bx >= (unsigned)bw)
+            bx = bx < 0 ? 0 : bw - 1;
+        if ((unsigned)bz >= (unsigned)bh)
+            bz = bz < 0 ? 0 : bh - 1;
+        b = bucket + brow[bz] + bx;
+        c = coarse[u->owner] + crow[bz >> COARSE_SHIFT] + (bx >> COARSE_SHIFT);
+        u->next = *b;
+        *b = (int16_t)i;
+        cnext[i] = *c;
+        *c = (int16_t)i;
+        filled[nfilled++] = b;
+        filled[nfilled++] = c;
     }
 }
 
@@ -853,6 +867,7 @@ static void finish_unit(Unit* u) {
     const UnitType* t = &unittypes[u->type];
     u->flags &= (uint8_t)~UF_UNBUILT;
     eco_stale = 1;
+    sim_roster++;
     u->hp = t->maxhp;
     if (t->flags & UF_MEX) {
         int x0 = foot_x0(t, u->x >> FIX), z0 = foot_z0(t, u->z >> FIX);
@@ -884,6 +899,7 @@ static int spawn_unit(int type, int owner, int x, int z, int unbuilt) {
     u = &units[i];
     memset(u, 0, sizeof *u);
     u->alive = 1;
+    sim_roster++;
     u->type = (uint8_t)type;
     u->owner = (uint8_t)owner;
     u->x = (int32_t)x << FIX;
@@ -1029,6 +1045,7 @@ static void kill_unit_as(int idx, int blast) {
         return;
     u->alive = 0;
     eco_stale = 1;
+    sim_roster++;
     if (t->kind != UK_MOBILE)
         set_occupancy(idx, 0);
     players[owner].losses++;
@@ -1083,6 +1100,7 @@ static void capture_unit(int idx, int owner) {
     int old = v->owner;
     v->owner = (uint8_t)owner;
     eco_stale = 1;
+    sim_roster++;
     order_clear(v);
     v->target = -1;
     v->attacker = -1;
@@ -2857,6 +2875,8 @@ static int map_alloc(void) {
     uint8_t* p;
     int i;
     sim_stop();
+    if (bh > MAX_BROWS)
+        return 0;
     /* within the 8 bytes a path cell, and the explored map's, that
      * tools/convert.py's map_memory() allows */
     map_block = tt_alloc_any(nb * 4 + nc * 4 + np * (6 + nclasses) + no + 16);
@@ -2893,18 +2913,27 @@ static int map_alloc(void) {
     memset(seen, 0, (size_t)nb);
     memset(radar, 0, (size_t)nb);
     memset(sight_type, 255, sizeof sight_type);
+    /* no unit in any bucket */
+    memset(bucket, 0xFF, (size_t)nb * 2);
+    memset(coarse[0], 0xFF, (size_t)nc * 4);
+    for (i = 0; i < bh; i++)
+        brow[i] = (uint16_t)(i * bw);
+    for (i = 0; i < ch; i++)
+        crow[i] = (uint16_t)(i * cw);
     return 1;
 }
 
 void sim_stop(void) {
     tt_free(map_block);
     map_block = 0;
+    nfilled = 0;
 }
 
 int sim_start(int schema) {
     const Schema* s = &mission.schema[schema < mission.nschema ? schema : 0];
     int i, j;
     memset(units, 0, sizeof units);
+    sim_roster++;
     memset(projs, 0, sizeof projs);
     memset(fx, 0, sizeof fx);
     memset(beams, 0, sizeof beams);
@@ -3036,8 +3065,10 @@ void sim_tick(void) {
 
 /* ------------------------------------------------------------ picking */
 
-int unit_at(int x, int sy, int owner_mask, int (*shown)(const Unit*)) {
-    int i, best = -1, bestd = 1 << 30;
+void units_at(int x, int sy, int owner_mask, int (*shown)(const Unit*), int best[2], int bestd[2]) {
+    int i;
+    best[0] = best[1] = -1;
+    bestd[0] = bestd[1] = 1 << 30;
     for (i = 0; i < unit_hi; i++) {
         const Unit* u = &units[i];
         const UnitType* t;
@@ -3063,12 +3094,25 @@ int unit_at(int x, int sy, int owner_mask, int (*shown)(const Unit*)) {
             if (d > r)
                 continue;
         }
-        if (d < bestd) {
-            bestd = d;
-            best = i;
+        if (d < bestd[u->owner]) {
+            bestd[u->owner] = d;
+            best[u->owner] = i;
         }
     }
-    return best;
+}
+
+int unit_at(int x, int sy, int owner_mask, int (*shown)(const Unit*)) {
+    int best[2], bestd[2];
+    units_at(x, sy, owner_mask, shown, best, bestd);
+    return nearer_of(best, bestd);
+}
+
+int nearer_of(const int best[2], const int bestd[2]) {
+    /* the nearer; of two as near, the first, as one look through both finds */
+    if (best[0] < 0 ||
+        (best[1] >= 0 && (bestd[1] < bestd[0] || (bestd[1] == bestd[0] && best[1] < best[0]))))
+        return best[1];
+    return best[0];
 }
 
 int feature_at(int x, int sy) {

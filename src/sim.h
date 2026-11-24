@@ -143,6 +143,7 @@ extern int sim_result; /* 0 playing, 1 won, -1 lost */
 extern int wind_now;   /* energy a second a wind generator gives, before its cap */
 extern int unit_hi;    /* every living unit's index is below this */
 extern int32_t sim_timer; /* ticks until a timed mission is lost, or -1 */
+extern uint32_t sim_roster; /* goes up whenever a unit comes, goes, is finished or changes sides */
 /* Where features came or went since the screen last took them: battlefield
  * pixels, y as on screen (z - height / 2); x0 > x1 when none did */
 extern int feat_dirty_x0, feat_dirty_y0, feat_dirty_x1, feat_dirty_y1;
@@ -199,6 +200,12 @@ int unit_screen_y(const Unit* u);
 /// @param u the unit
 /// @return unit_screen_y() less half its height in the air, pixels
 int unit_draw_y(const Unit* u);
+
+/// Gives how far above where it stands a unit is drawn.
+///
+/// @param u the unit
+/// @return half its height in the air, pixels: unit_screen_y() less unit_draw_y()
+int unit_lift(const Unit* u);
 
 /// Tells whether a unit can fight another with the weapons that fire by
 /// themselves: an aircraft takes a weapon that reaches the air, a
@@ -301,6 +308,22 @@ int snap_build_z(int type, int z);
 /// @param shown whether the screen shows a unit
 /// @return the unit, or -1
 int unit_at(int x, int sy, int owner_mask, int (*shown)(const Unit*));
+
+/// Finds, as unit_at() does, the player's unit and the computer's under a
+/// point, in one look through the units.
+///
+/// @param x the point's battlefield x, pixels
+/// @param sy the point's battlefield y on screen, pixels
+/// @param owner_mask bit 0 the player's units, bit 1 the computer's
+/// @param shown whether the screen shows a unit
+/// @param[out] best each side's unit, or -1
+/// @param[out] bestd how far each is from the point, as unit_at() weighs it
+void units_at(int x, int sy, int owner_mask, int (*shown)(const Unit*), int best[2], int bestd[2]);
+
+/// Picks what unit_at() would of units_at()'s two.
+///
+/// @return the nearer unit, or -1
+int nearer_of(const int best[2], const int bestd[2]);
 
 /// Gives the half-widths of a disc of cells, row by row: the disc that sight
 /// covers, in the sim's buckets and the explored map's cells alike.

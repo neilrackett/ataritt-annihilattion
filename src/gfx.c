@@ -218,10 +218,12 @@ void gfx_copy_rect(uint8_t* dst, const uint8_t* src, int x0, int y0, int x1, int
         y1 = SCREEN_H - 1;
     if (x0 > x1 || y0 > y1)
         return;
-    o = (x0 >> 4) * 8;
-    n = ((x1 >> 4) - (x0 >> 4) + 1) * 8;
-    for (y = y0; y <= y1; y++)
-        memcpy(dst + y * LINE_BYTES + o, src + y * LINE_BYTES + o, n);
+    o = y0 * LINE_BYTES + (x0 >> 4) * 8;
+    n = (x1 >> 4) - (x0 >> 4) + 1;
+    dst += o;
+    src += o;
+    for (y = y0; y <= y1; y++, dst += LINE_BYTES, src += LINE_BYTES)
+        copy_run((uint32_t*)dst, (const uint32_t*)src, n);
 }
 
 /* ------------------------------------------------------------ text */

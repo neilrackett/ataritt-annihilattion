@@ -29,6 +29,21 @@ enum {
 
 extern int gfx_stride; ///< bytes a row of what is drawn on (default: the screen's)
 
+/// Copies n groups (n > 0) from s to d: a group a pass, in two moves, which
+/// GCC's own loops do not manage, and no call, which memcpy() costs.
+///
+/// @return where d got to
+static inline uint32_t* copy_run(uint32_t* d, const uint32_t* s, int n) {
+    __asm__ volatile("subq.w #1,%2\n"
+                     "1:\tmove.l (%1)+,(%0)+\n\t"
+                     "move.l (%1)+,(%0)+\n\t"
+                     "dbra %2,1b"
+                     : "+a"(d), "+a"(s), "+d"(n)
+                     :
+                     : "memory");
+    return d;
+}
+
 /// Sets the rectangle drawing keeps to.
 ///
 /// @param x0 the left edge, a multiple of 16

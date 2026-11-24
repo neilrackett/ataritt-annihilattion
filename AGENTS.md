@@ -171,7 +171,14 @@ stage's share; `fps1`, `fps3`, `scroll` and `battle` are the ones to watch.
   missed redraw.
 - **Per-call costs add up.** A function call, a modulo or a division per
   row or per group cost more than the work. Step pointers instead, and wrap
-  ring columns with `& (RING_G - 1)`.
+  ring columns with `& (RING_G - 1)`. Hatari counts a `muls.l` as about 4
+  cycles where the 68030 takes up to 44, so its profiles hide multiplies:
+  `build_buckets()` takes its rows from tables, and empties only the
+  buckets it filled. Work done each frame for the units under the pointer,
+  or each tick for the player's, is done once and kept: `hover_unit()` for
+  both the hover and the pointer's shape, `explore()`'s list of the units
+  that explore and `selected()`'s counts, made again when `sim_roster`
+  says a unit came, went, was finished or changed sides.
 - **Memory is the full game's limit.** A mission's file is sized by the
   converter to fit `MISSION_BUDGET`: its cells, the sim's and the explored
   map's arrays (`map_alloc()`, `ex_alloc()`, sized per map when it starts)

@@ -198,7 +198,8 @@ static void minimap_to_world(int x, int y, int* wx, int* wz) {
 enum { SEL_ALL, SEL_MOBILE, SEL_ARMED, SEL_BUILDER, SEL_MOBILE_BUILDER, SEL_FACTORY, SEL_SORTS };
 
 static struct {
-    int32_t frame, tick, version; /* when it was counted */
+    int32_t version; /* the selection's, and the sim's roster, when it was counted */
+    uint32_t roster;
     int n[SEL_SORTS], first[SEL_SORTS];
 } sel;
 
@@ -209,14 +210,14 @@ static void sel_add(int sort, int i) {
         sel.first[sort] = i;
 }
 
-/* How many selected units are of a sort, counted once a frame and tick; first
- * gets the lowest numbered (-1 when none) */
+/* How many selected units are of a sort, counted again when the selection
+ * changes or a unit comes or goes; first gets the lowest numbered (-1 when
+ * none) */
 static int selected(int sort, int* first) {
     int i;
-    if (sel.frame != game_frames || sel.tick != sim_tick_count || sel.version != sel_version) {
-        sel.frame = game_frames;
-        sel.tick = sim_tick_count;
+    if (sel.version != sel_version || sel.roster != sim_roster) {
         sel.version = sel_version;
+        sel.roster = sim_roster;
         for (i = 0; i < SEL_SORTS; i++) {
             sel.n[i] = 0;
             sel.first[i] = -1;
@@ -732,6 +733,9 @@ static int fog_stride; /* fog_dirty's: tiles -1 to ex_stride - 1, and room */
 static uint8_t* explored;
 static int ex_w, ex_h;
 static uint16_t ex_x[MAX_UNITS], ex_y[MAX_UNITS]; /* the cell a unit last explored from (y on screen) */
+static int16_t ex_units[MAX_UNITS]; /* the units that explore: the player's, once built */
+static int ex_n;
+static uint32_t ex_roster; /* the sim's roster when ex_units[] was made */
 static uint16_t ex_z[MAX_UNITS];                  /* and its z cell, to tell when it has moved */
 static uint8_t* fog_dirty;  /* tiles to draw again, tile tx, ty at ty + 1, tx + 1 */
 static int fog_t0, fog_t1;  /* the rows of fog_dirty in use */
@@ -772,11 +776,15 @@ static int explored_at(int x, int y) {
     return cx < 0 || cy < 0 || cx >= ex_w || cy >= ex_h || explored[cy * ex_stride + cx];
 }
 
+/* Whether an enemy is shown, given where it stands on screen (unit_screen_y()) */
+static int enemy_shown(const Unit* u, int gy) {
+    return (u->flags & (UF_SEEN | UF_WAS_SEEN)) && explored_at(u->x >> FIX, gy);
+}
+
 /* Whether a unit is shown: the player's always; an enemy where the sim's
  * sight saw it (a building, where it was last seen), on explored ground */
 static int unit_shown(const Unit* u) {
-    return u->owner == PLAYER ||
-           ((u->flags & (UF_SEEN | UF_WAS_SEEN)) && explored_at(u->x >> FIX, unit_screen_y(u)));
+    return u->owner == PLAYER || enemy_shown(u, unit_screen_y(u));
 }
 
 /* Explores cells c0..c1 of row r, and notes the fog tiles and minimap rows
@@ -817,15 +825,22 @@ static void explore_row(int r, int c0, int c1) {
  * its sight. Everything in the disc it explored last time is explored
  * already, so a row is looked at only beyond that disc. */
 static void explore(void) {
-    int i;
-    for (i = 0; i < unit_hi; i++) {
-        const Unit* u = &units[i];
+    int i, k;
+    if (ex_roster != sim_roster) {
+        ex_roster = sim_roster;
+        ex_n = 0;
+        for (i = 0; i < unit_hi; i++) {
+            const Unit* u = &units[i];
+            if (u->alive && u->owner == PLAYER && !(u->flags & UF_UNBUILT))
+                ex_units[ex_n++] = (int16_t)i;
+            else
+                ex_x[i] = EX_NONE;
+        }
+    }
+    for (k = 0; k < ex_n; k++) {
+        const Unit* u = &units[i = ex_units[k]];
         const uint8_t* wt;
         int cx, cz, cy, ox = ex_x[i], oy, r, d;
-        if (!u->alive || u->owner != PLAYER || (u->flags & UF_UNBUILT)) {
-            ex_x[i] = EX_NONE;
-            continue;
-        }
         cx = (u->x >> FIX) >> EX_SHIFT;
         cz = (u->z >> FIX) >> EX_SHIFT;
         if (cx == ox && cz == ex_z[i])
@@ -1334,19 +1349,6 @@ static void bg_update(void) {
     feat_dirty_x1 = -1;
 }
 
-/* Copies n groups (n > 0) from s to d, and returns where d got to: a group a
- * pass, which GCC's own loops do not manage */
-static inline uint32_t* copy_run(uint32_t* d, const uint32_t* s, int n) {
-    __asm__ volatile("subq.w #1,%2\n"
-                     "1:\tmove.l (%1)+,(%0)+\n\t"
-                     "move.l (%1)+,(%0)+\n\t"
-                     "dbra %2,1b"
-                     : "+a"(d), "+a"(s), "+d"(n)
-                     :
-                     : "memory");
-    return d;
-}
-
 /* Copies a cell row of n groups from s to d, both in a ring */
 static void copy_groups(uint32_t* d, const uint32_t* s, int n) {
     int y;
@@ -1504,13 +1506,22 @@ draw_resource(uint8_t* scr, int x, int32_t have, int32_t store, int32_t income, 
     gfx_text(scr, x + 108, 5, s, income >= 0 ? C_GREEN : C_RED);
 }
 
-/* The unit under the pointer, found once a frame */
+/* The units under the pointer, found once a frame (and again if it moves):
+ * the player's and the computer's in under[], and the nearer of them */
+static int under[2];
 static int hover_unit(void) {
     static int32_t frame = -1;
-    static int hover;
-    if (frame != game_frames) {
+    static int hover, x, y;
+    if (frame != game_frames || x != mx() || y != my()) {
         frame = game_frames;
-        hover = in_view(mx(), my()) ? unit_at(mx() - VIEW_X + camx, my() - VIEW_Y + camy, 3, unit_shown) : -1;
+        x = mx();
+        y = my();
+        under[0] = under[1] = hover = -1;
+        if (in_view(x, y)) {
+            int d[2];
+            units_at(x - VIEW_X + camx, y - VIEW_Y + camy, 3, unit_shown, under, d);
+            hover = nearer_of(under, d);
+        }
     }
     return hover;
 }
@@ -1797,6 +1808,7 @@ static int draw_minimap(uint8_t* scr) {
 
 #define MAX_DRAW 450
 static uint32_t drawlist[MAX_DRAW];
+static int16_t draw_y[MAX_UNITS]; /* where each unit in the list is drawn on screen (unit_draw_y()) */
 
 static void sort_draw(int n) {
     /* Shell sort on depth (high 16 bits), by Ciura's gaps */
@@ -1888,7 +1900,7 @@ static void units_changed(int n) {
         d = &drawn[i];
         spr = unit_frame(u->type, t->ndirs == 16 ? ((u->heading + 2048) >> 12) & 15 : 0);
         sx = u->x >> FIX;
-        sy = unit_draw_y(u);
+        sy = draw_y[i];
         if (u->flags & UF_UNBUILT) {
             look = LOOK_NANO;
             built = built_of(u, 256);
@@ -1943,18 +1955,25 @@ static void draw_battlefield(void) {
     uint32_t tt0 = HZ200;
     for (i = 0; i < unit_hi && n < MAX_DRAW; i++) {
         const Unit* u = &units[i];
-        int ux, uz;
+        const UnitType* t;
+        int ux, uz, gy, lift;
         if (!u->alive)
             continue;
         ux = u->x >> FIX;
         uz = u->z >> FIX;
-        if (ux < x0 || ux > x1 || uz < y0 || uz > y1 || !unit_shown(u))
+        if (ux < x0 || ux > x1 || uz < y0 || uz > y1)
             continue;
+        gy = unit_screen_y(u);
+        if (u->owner != PLAYER && !enemy_shown(u, gy))
+            continue;
+        t = &unittypes[u->type];
+        lift = unit_lift(u);
+        draw_y[i] = (int16_t)(gy - lift);
         /* buildings sort by their back edge, so units in front of them come
          * later; aircraft come after everything on the ground */
-        if (unittypes[u->type].kind != UK_MOBILE)
-            uz -= unittypes[u->type].footz * 8 - 8;
-        else if (unit_draw_y(u) != unit_screen_y(u))
+        if (t->kind != UK_MOBILE)
+            uz -= t->footz * 8 - 8;
+        else if (lift)
             uz += 0x4000;
         drawlist[n++] = (uint32_t)(uz + 64) << 16 | (uint32_t)i;
     }
@@ -2127,7 +2146,6 @@ static void draw_cursor(uint8_t* scr) {
     int c = CUR_NORMAL, x = mx(), y = my();
     const int16_t* spr;
     if (in_view(x, y)) {
-        int wx = x - VIEW_X + camx, wy = y - VIEW_Y + camy;
         if (mode == M_ATTACK || mode == M_DGUN)
             c = CUR_ATTACK;
         else if (mode == M_MOVE)
@@ -2144,12 +2162,15 @@ static void draw_cursor(uint8_t* scr) {
             c = CUR_REPAIR;
         else if (mode == M_BUILD)
             c = CUR_NORMAL;
-        else if (unit_at(wx, wy, 1 << PLAYER, unit_shown) >= 0)
-            c = CUR_SELECT;
-        else if (nselected && unit_at(wx, wy, 1 << ENEMY, unit_shown) >= 0 && selected(SEL_ARMED, 0))
-            c = CUR_ATTACK;
-        else if (nselected && selected(SEL_MOBILE, 0))
-            c = CUR_MOVE;
+        else {
+            hover_unit(); /* fills under[] */
+            if (under[PLAYER] >= 0)
+                c = CUR_SELECT;
+            else if (nselected && under[ENEMY] >= 0 && selected(SEL_ARMED, 0))
+                c = CUR_ATTACK;
+            else if (nselected && selected(SEL_MOBILE, 0))
+                c = CUR_MOVE;
+        }
     }
     spr = world_sprite(world.cursor[c]);
     gfx_clip_full();
@@ -2647,6 +2668,7 @@ int game_run(int difficulty) {
     minimap_ox = ((128 - mission.mw) / 2) & ~15;
     minimap_oy = (128 - mission.mh) / 2;
     memset(ex_x, 0xFF, sizeof ex_x);
+    ex_roster = sim_roster - 1; /* make the list of units that explore */
     fog_t0 = ex_h + 1;
     fog_t1 = -1;
     explore(); /* what the units see from the start; the first frame draws it all */

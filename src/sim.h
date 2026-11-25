@@ -144,7 +144,7 @@ extern int32_t sim_last_fight; /* the tick a unit of the player's last fought */
 extern int sim_result; /* 0 playing, 1 won, -1 lost */
 extern int wind_now;   /* energy a second a wind generator gives, before its cap */
 extern int unit_hi;    /* every living unit's index is below this */
-extern int32_t sim_timer; /* ticks until a timed mission is lost, or -1 */
+extern int32_t sim_timer; /* ticks until a mission's timer runs out, or -1 */
 extern uint32_t sim_roster; /* goes up whenever a unit comes, goes, is finished or changes sides */
 /* Where features came or went since the screen last took them: battlefield
  * pixels, y as on screen (z - height / 2); x0 > x1 when none did */

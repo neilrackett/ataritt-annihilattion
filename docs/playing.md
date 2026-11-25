@@ -46,11 +46,12 @@ well:
 
 In both:
 
-- The missions' own objectives: destroying the enemy, capturing a Gate or a
-  unit, building a shipyard, reaching a place, killing a Commander, getting
-  a ship past a line. Winning any of a mission's objectives wins it; losing
-  the Commander, a unit you must keep, or every unit loses it, as the
-  mission files say. A timed mission counts down at the bottom of the screen.
+- The missions' own objectives: destroying the enemy, or every unit of it
+  that moves, capturing a Gate or a unit, building a shipyard, reaching a
+  place, killing a Commander, getting a ship past a line, holding out until
+  time runs out. Winning any of a mission's objectives wins it; losing the
+  Commander, a unit you must keep, or every unit loses it, as the mission
+  files say. A timed mission counts down at the bottom of the screen.
 - The enemy follows the missions' scripts (patrols, waits, attacks on named
   unit types, factories building on a timer, crawling bombs blowing up); the
   computer player also builds from idle factories, sends groups of idle

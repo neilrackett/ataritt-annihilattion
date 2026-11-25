@@ -296,6 +296,11 @@ stage's share; `fps1`, `fps3`, `scroll` and `battle` are the ones to watch.
   only; the full game's CDs and films are `build.sh --full`'s.
 - TA's data has its typos: numbers such as `3.6.`, a script moving a unit
   to x 81200. Read it forgivingly, and keep what it says within range.
+- **Check what a value means against what the game tells the player.** A
+  mission's timers (`DeathTimerRunsOut`, `VictoryTimerRunsOut`) are
+  seconds, as twenty of the briefings say ("1202" is twenty minutes); taken
+  as TA's 30 ticks a second, the Core's 21st mission ran out after 4
+  minutes instead of 2 hours.
 - **The expansions lie over the game's data**, in `cc/` and `bt/` beside
   it, as the game reads its archives: find files with `ta.path()`, and list
   folders with `ta.listdir()` and `ta.walk()`, never `os.listdir()`, or
@@ -310,7 +315,10 @@ stage's share; `fps1`, `fps3`, `scroll` and `battle` are the ones to watch.
   full game's are under it and stay as they were. Maps that leave too few
   tiles, or too many path cells for 16-bit indices, are left out (`fits()`),
   campaign missions as well as skirmishes: the Krogoth Encounter's 760x760
-  cells need 4.7 MB.
+  cells need 4.7 MB. A mission's whole file and the engine's arrays stay
+  within `MISSION_TOTAL`, the most the full game's own take: one of Battle
+  Tactics' brought a megabyte of feature sprites, past what the TT had
+  left for its map.
 
 ## The web converter
 

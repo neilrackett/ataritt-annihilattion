@@ -261,13 +261,16 @@ enum {
     COND_KILLCOMMANDER = 6,
     COND_KILLALLOFTYPE = 7,
     COND_TYPEPASSESZ = 8,
+    COND_KILLMOBILE = 9, /* every enemy mobile unit destroyed */
     /* what loses */
     COND_COMMANDER = 10,
     COND_ALLKILLED = 11,
     COND_ALLOFTYPE = 12,
     COND_TYPEKILLED = 13,
     COND_ANYPASSESZ = 14,
-    COND_TIMER = 15
+    COND_TIMER = 15,
+    /* what wins as well, when it runs out: holding out for a time */
+    COND_VICTORY_TIMER = 16
 };
 
 enum {

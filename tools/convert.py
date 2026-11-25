@@ -59,6 +59,10 @@ ENGINE_ANIMS = ['explode5']  # effects the engine shows by number (data.h, ANIM_
 # The memory a mission's map may take on the TT: its tiles, its cells, and
 # what the engine keeps for each cell (map_memory())
 MISSION_BUDGET = 1900 * 1024
+# and what its whole file and the engine's arrays may: as much as the full
+# game's largest (a skirmish on Pincushion) takes, so that the expansions'
+# missions leave the sprites as much room
+MISSION_TOTAL = 2240 * 1024
 SKIRMISH_TILES = 1000       # the fewest tiles a skirmish map may be cut to
 FEAT_NONE, FEAT_WRECK = 0xFFFFFFFF, 0xFFFFFFFE      # data.h's: a feature with no sprite, a unit's wreck
 MAX_TILES = 2600
@@ -1005,7 +1009,9 @@ def write_common(out):
 COND = {'moveunittoradius': 1, 'killunittype': 2, 'destroyallunits': 3, 'captureunittype': 4,
         'buildunittype': 5, 'killenemycommander': 6, 'killalloftype': 7, 'unittypepassesz': 8,
         'commanderkilled': 10, 'allunitskilled': 11, 'allunitskilledoftype': 12,
-        'unittypekilled': 13, 'anyunitpassesz': 14, 'deathtimerrunsout': 15}
+        'unittypekilled': 13, 'anyunitpassesz': 14, 'deathtimerrunsout': 15,
+        # the expansions': every enemy mobile unit destroyed, and holding out for a time
+        'killallmobileunits': 9, 'victorytimerrunsout': 16}
 
 
 def compile_script(text, unit_names, idents, size):
@@ -1193,8 +1199,6 @@ def write_mission(out, m, t, mapper, game_pal, unit_names, classes, feat_defs):
     # what the engine keeps for the map, and the rest for tiles
     limit = min(MAX_TILES, (MISSION_BUDGET - map_memory(W, H, len(classes))[0]) // 512)
     assert limit > 300, (m.base, limit)
-    if len(tile_bytes) > limit:
-        tilemap, tile_bytes = merge_tiles(np.array(thumbs, np.float32), uses, tilemap, tile_bytes, limit)
     Image.fromarray(np.array(game_pal, np.uint8)[preview]).save(os.path.join(PREVIEWS, m.file + '.png'))
     # passability for each movement class; a cell's slope is its corner spread
     hgt = np.array(t.height, np.int32).reshape(H, W)
@@ -1243,9 +1247,9 @@ def write_mission(out, m, t, mapper, game_pal, unit_names, classes, feat_defs):
             args = [int(parts[1]), 0, 0]
         elif k == 'anyunitpassesz':
             args = [int(parts[0]), 0, 0]
-        elif k == 'deathtimerrunsout':
-            # TA's game ticks, 30 a second, as seconds
-            args = [int(parts[0]) // TA_FRAMES, 0, 0]
+        elif k in ('deathtimerrunsout', 'victorytimerrunsout'):
+            # seconds, as the briefings say: 1202 is "twenty minutes", 3600 "60 minutes"
+            args = [int(ta.num({'v': parts[0]}, 'v')), 0, 0]
         elif v.strip() in ('0', ''):
             continue
         conds.append(be('hhhhh', COND[k], typ, *args))
@@ -1306,29 +1310,39 @@ def write_mission(out, m, t, mapper, game_pal, unit_names, classes, feat_defs):
     # base metal everywhere else
     sm = int(ta.num(gh.get('schema 0', {}), 'surfacemetal', 3))
     metal[metal == 0] = sm
-    head = (b'OAM4' + cstr(m.name, 40) +
-            be('HHHHHHHHHHHHHHHHHHHH', W, H, tw, th, len(tile_bytes), t.sealevel, mw, mh, len(ftypes),
-               len(placed), len(conds), int(ta.num(gh, 'solarstrength')), int(ta.num(gh, 'minwindspeed')),
-               int(ta.num(gh, 'maxwindspeed')), len(schemas), int(ta.num(gh, 'tidalstrength')), m.world,
-               m.side, int(ta.num(gh, 'lavaworld')), len(need)))
     # what the player may build: the mission's useonly list, or everything
     uo = ta.path('camps/useonly/%s.tdf' % m.base) if m.base == m.map else None
     allowed = set(k.lower().split('#')[0] for k in ta.read_tdf(uo)) if uo else set(unit_names)
     bits = np.zeros(MAX_UNITTYPES, np.uint8)
     for i, n in enumerate(unit_names):
         bits[i] = n in allowed
-    body = head + b''.join(conds) + b''.join(be('H', n) for n in need) + np.packbits(bits).tobytes()
-    body += b''.join(frecs)
-    body += b''.join(be('HHH', *p) for p in placed)
-    body += be('I', len(scripts) // 8) + bytes(scripts)
-    for s in schemas:
-        body += s
-    body += b''.join(be('H', v) for v in tilemap)
-    body += hgt.astype(np.uint8).tobytes() + flags.tobytes() + np.clip(metal, 0, 255).astype(np.uint8).tobytes()
-    body += image_planar(mmi)
-    body = pad4(body)
-    body += b''.join(tile_bytes)
-    body += be('I', len(bank.data)) + bytes(bank.data)
+
+    def assemble(tilemap, tile_bytes):
+        head = (b'OAM4' + cstr(m.name, 40) +
+                be('HHHHHHHHHHHHHHHHHHHH', W, H, tw, th, len(tile_bytes), t.sealevel, mw, mh, len(ftypes),
+                   len(placed), len(conds), int(ta.num(gh, 'solarstrength')), int(ta.num(gh, 'minwindspeed')),
+                   int(ta.num(gh, 'maxwindspeed')), len(schemas), int(ta.num(gh, 'tidalstrength')), m.world,
+                   m.side, int(ta.num(gh, 'lavaworld')), len(need)))
+        body = head + b''.join(conds) + b''.join(be('H', n) for n in need) + np.packbits(bits).tobytes()
+        body += b''.join(frecs)
+        body += b''.join(be('HHH', *p) for p in placed)
+        body += be('I', len(scripts) // 8) + bytes(scripts)
+        for s in schemas:
+            body += s
+        body += b''.join(be('H', v) for v in tilemap)
+        body += hgt.astype(np.uint8).tobytes() + flags.tobytes() + np.clip(metal, 0, 255).astype(np.uint8).tobytes()
+        body += image_planar(mmi)
+        body = pad4(body)
+        body += b''.join(tile_bytes)
+        return body + be('I', len(bank.data)) + bytes(bank.data)
+    # and the whole of it, with the engine's arrays, within MISSION_TOTAL: the
+    # expansions' features can take a megabyte
+    rest = len(assemble(tilemap, [])) + map_memory(W, H, len(classes))[0] - W * H * 3
+    limit = min(limit, (MISSION_TOTAL - rest) // 512)
+    assert limit > 300, (m.base, limit)
+    if len(tile_bytes) > limit:
+        tilemap, tile_bytes = merge_tiles(np.array(thumbs, np.float32), uses, tilemap, tile_bytes, limit)
+    body = assemble(tilemap, tile_bytes)
     open(os.path.join(out, m.file.upper() + '.DAT'), 'wb').write(body)
     print(m.file.upper() + '.DAT', len(body), 'bytes,', len(tile_bytes), 'tiles,', len(placed), 'features,',
           len(ftypes), 'kinds')

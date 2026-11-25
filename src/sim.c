@@ -2754,7 +2754,7 @@ static void computer_step(void) {
 static void check_objectives(void) {
     static uint16_t have[MAX_UNITTYPES], have_any[MAX_UNITTYPES], en_have[MAX_UNITTYPES];
     int i, c, won = 0, lost = 0, any_victory = 0, en_commander = 0;
-    int pl_units = 0, en_units = 0;
+    int pl_units = 0, en_units = 0, en_mobile = 0;
     memset(have, 0, sizeof have);
     memset(have_any, 0, sizeof have_any);
     memset(en_have, 0, sizeof en_have);
@@ -2770,6 +2770,8 @@ static void check_objectives(void) {
         } else {
             en_units++;
             en_have[u->type]++;
+            if (unittypes[u->type].kind == UK_MOBILE && !(u->flags & UF_UNBUILT))
+                en_mobile++;
             if (unittypes[u->type].flags & UF_COMMANDER)
                 en_commander = 1;
         }
@@ -2856,6 +2858,16 @@ static void check_objectives(void) {
         case COND_TIMER:
             if (!sim_timer)
                 lost = 1;
+            break;
+        case COND_KILLMOBILE:
+            any_victory = 1;
+            if (!en_mobile)
+                won = 1;
+            break;
+        case COND_VICTORY_TIMER:
+            any_victory = 1;
+            if (!sim_timer)
+                won = 1;
             break;
         }
     }
@@ -3030,7 +3042,7 @@ int sim_start(int schema) {
     recount_storage(PLAYER);
     recount_storage(ENEMY);
     for (i = 0; i < mission.ncond; i++)
-        if (mission.cond[i].kind == COND_TIMER)
+        if (mission.cond[i].kind == COND_TIMER || mission.cond[i].kind == COND_VICTORY_TIMER)
             sim_timer = (int32_t)mission.cond[i].a * TICKS;
     build_buckets();
     update_sight();

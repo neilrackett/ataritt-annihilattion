@@ -60,9 +60,9 @@ ENGINE_ANIMS = ['explode5']  # effects the engine shows by number (data.h, ANIM_
 # what the engine keeps for each cell (map_memory())
 MISSION_BUDGET = 1900 * 1024
 # and what its whole file and the engine's arrays may: as much as the full
-# game's largest (a skirmish on Pincushion) takes, so that the expansions'
-# missions leave the sprites as much room
-MISSION_TOTAL = 2240 * 1024
+# game's largest (a skirmish on Pincushion, 2157.4 KB) takes, so that the
+# expansions' missions leave the sprites as much room
+MISSION_TOTAL = 2158 * 1024
 SKIRMISH_TILES = 1000       # the fewest tiles a skirmish map may be cut to
 MIN_TILES = 300             # and a campaign mission's
 FEAT_NONE, FEAT_WRECK = 0xFFFFFFFF, 0xFFFFFFFE      # data.h's: a feature with no sprite, a unit's wreck
@@ -272,17 +272,24 @@ def find_missions():
     return camps
 
 
-def map_memory(w, h, nclasses):
-    """What a map of w x h cells takes on the TT beside its tiles: its
-    cells' heights, flags and metal, its tile map, and the engine's arrays
-    for it (sim.c's map_alloc(): 6 bytes a 32-pixel path cell, its rows a
-    power of two long, and one a move class; game.c's ex_alloc(): about 2
-    more for the explored map). Returns (bytes, path cells)."""
+def engine_memory(w, h, nclasses):
+    """What the engine keeps for a map of w x h cells, beside its file:
+    sim.c's map_alloc(), 6 bytes a 32-pixel path cell, its rows a power of
+    two long, and one a move class; game.c's ex_alloc(), about 2 more for
+    the explored map. Returns (bytes, path cells)."""
     stride = 1
     while stride < (w + 1) // 2:
         stride *= 2
     pcells = stride * ((h + 1) // 2)
-    return w * h * 3 + pcells * (8 + nclasses) + (w // 2) * (h // 2) * 2, pcells
+    return pcells * (8 + nclasses), pcells
+
+
+def map_memory(w, h, nclasses):
+    """What a map of w x h cells takes on the TT beside its tiles: its
+    cells' heights, flags and metal and its tile map, in its file, and the
+    engine's arrays for it (engine_memory()). Returns (bytes, path cells)."""
+    eng, pcells = engine_memory(w, h, nclasses)
+    return w * h * 3 + (w // 2) * (h // 2) * 2 + eng, pcells
 
 
 def tile_room(mem):
@@ -1347,7 +1354,7 @@ def write_mission(out, m, t, mapper, game_pal, unit_names, classes, feat_defs):
     # keeps for it, and what MISSION_TOTAL leaves beside the whole file and
     # those arrays (the expansions' features can take a megabyte)
     mem = map_memory(W, H, len(classes))[0]
-    rest = len(assemble(tilemap, [])) + mem - W * H * 3
+    rest = len(assemble(tilemap, [])) + engine_memory(W, H, len(classes))[0]
     limit = min(MAX_TILES, tile_room(mem), (MISSION_TOTAL - rest) // 512)
     if limit < MIN_TILES:
         print('  mission left out, too little room for its tiles:', m.base, limit)

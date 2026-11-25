@@ -46,11 +46,11 @@ def collect(ob, origin=(0, 0, 0), out=None):
             if sel or len(idx) < 3:
                 continue
             pts = [(ob.verts[i][0] + o[0], ob.verts[i][1] + o[1], ob.verts[i][2] + o[2]) for i in idx]
-            # the ground plate: some wrecks (armham_dead, corak_dead,
+            # the ground plate: some models (armham_dead, corak_dead,
             # corthud_dead) don't mark it as the selection shape, and it
-            # would draw as a black square; the Swatter's (armah) is
-            # coloured, on its ground plate piece
-            if not tex and ((col & 255) == 0 or ob.name == 'gp') and all(abs(p[1]) < 0.01 for p in pts):
+            # would draw as a square, black or coloured (the Swatter's,
+            # The Core Contingency's Pyro wreck)
+            if not tex and all(abs(p[1]) < 0.01 for p in pts):
                 continue
             out.append((pts, col, tex))
     for c in ob.children:

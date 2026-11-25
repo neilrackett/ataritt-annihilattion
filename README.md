@@ -43,9 +43,7 @@ convert it yourself. The easiest way is in your browser:
    [Internet Archive](https://archive.org/details/TotalAnnihilation_201405)
 1. Drop it on the [data converter](https://labs.neilrackett.com/ataritt-annihilattion/),
    which gives you an `ANNIHILA` folder with the converted data in its
-   `DATA` folder
-1. Download `ANNIHILA.TOS` from [neilrackett.com](https://neilrackett.com/atarist/ataritt-annihilattion)
-   and put it in that folder
+   `DATA` folder, and `ANNIHILA.TOS` beside it
 1. Copy the folder to your TT's hard disk and run `ANNIHILA.TOS`
 
 Or build it all on a Mac or Linux:

@@ -99,20 +99,27 @@ async function accept(list: FileList | null): Promise<void> {
 		return;
 	}
 	reset();
+	const mine = run;
 	state.check = 'working';
 	detail.check = escapeHtml(file.name);
 	render();
 	const data = await file.arrayBuffer();
 	const wrong = await checkInstaller(new Uint8Array(data));
+	if (mine !== run) {
+		return;
+	}
 	if (wrong) {
 		state.check = 'failed';
 		detail.check = `${escapeHtml(file.name)} &middot; not used: ${escapeHtml(wrong)}`;
-	} else {
-		state.check = 'done';
-		detail.check = `${escapeHtml(file.name)} &middot; ${(data.byteLength / 1048576).toFixed(1)}MB &middot; checked`;
-		installer = { name: file.name, data };
+		render();
+		return;
 	}
-	render();
+	state.check = 'done';
+	detail.check = `${escapeHtml(file.name)} &middot; ${(data.byteLength / 1048576).toFixed(1)}MB &middot; checked`;
+	installer = { name: file.name, data };
+	// at once: nothing in a conversion waits on a click, as the zip downloads
+	// minutes after one anyway; only saving to a folder needs its own
+	convert();
 }
 
 // --- converting ------------------------------------------------------
@@ -175,7 +182,7 @@ async function getProgram(mine: number): Promise<void> {
 	program = bytes;
 	state.program = bytes ? 'done' : 'failed';
 	detail.program = bytes
-		? `from downloads.neilrackett.com &middot; ${Math.round(bytes.length / 1024)}KB`
+		? `from neilrackett.com &middot; ${Math.round(bytes.length / 1024)}KB`
 		: `couldn't be fetched: download it from ${SITE}`;
 	render();
 }
@@ -285,7 +292,8 @@ function render(): void {
 	}).join('');
 
 	const busy = worker !== null;
-	convertButton.disabled = !installer || busy || files !== null;
+	// only to try again, after a conversion stopped
+	convertButton.hidden = !installer || busy || files !== null;
 	saveButton.hidden = files === null || !('showDirectoryPicker' in window);
 	resetButton.hidden = busy || (state.check === 'waiting' && !files);
 	dropZone.classList.toggle('disabled', busy);

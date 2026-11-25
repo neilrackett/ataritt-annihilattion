@@ -60,12 +60,14 @@ plays is still converted on your own computer.
 
 The [data converter](https://labs.neilrackett.com/ataritt-annihilattion/)
 does `build.sh`'s first two steps in a web page: drop the installer on it and
-it gives back the converted data, the same files byte for byte. It runs the
-same `tools/*.py` in [Pyodide](https://pyodide.org), Python built for the
-browser, in about two minutes, and nothing is uploaded.
+it gives back the converted data, the same files byte for byte, with the
+latest `ANNIHILA.TOS` beside them. It runs the same `tools/*.py` in
+[Pyodide](https://pyodide.org), Python built for the browser, in about two
+minutes, and nothing is uploaded.
 
 It lives in `web/` (Vite and TypeScript, with pnpm). `pnpm install` then
-`pnpm run dev` serves it locally; `pnpm test` converts the installer in
+`pnpm run dev` serves it locally, without `ANNIHILA.TOS` in its zip, which
+only the published page may fetch; `pnpm test` converts the installer in
 `tmp/ta-demo` through Pyodide in Node and checks the result against `dist/DATA`,
 skipping that when either is missing. Each push to `main` that changes
 `web/` or the converter publishes it to the `gh-pages` branch

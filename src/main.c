@@ -30,14 +30,14 @@ static const char* difficulty_names[3] = {"Easy", "Medium", "Hard"};
  * kept in PROGRESS.DAT */
 static uint8_t progress[MAX_CAMPAIGNS];
 
-static const char* game_names[3] = {"TOTAL ANNIHILATION", "THE CORE CONTINGENCY", "BATTLE TACTICS"};
+static const char* game_names[GAME_BT + 1] = {"TOTAL ANNIHILATION", "THE CORE CONTINGENCY", "BATTLE TACTICS"};
 
 /* A campaign's name for its screens: an expansion's with the expansion's */
 static const char* campaign_title(int c) {
     static char s[64];
-    if (campaigns[c].game == GAME_TA || campaigns[c].side == 2)
+    if (campaigns[c].game == GAME_TA)
         return campaigns[c].name;
-    sprintf(s, "%s: %s", game_names[campaigns[c].game < 3 ? campaigns[c].game : 0], campaigns[c].name);
+    sprintf(s, "%s: %s", game_names[campaigns[c].game], campaigns[c].name);
     return s;
 }
 
@@ -701,18 +701,26 @@ typedef struct {
     int16_t x, y, c;
 } ListRow;
 
+/* The campaign after the run of c's game's (a skirmish's run is its own) */
+static int game_end(int c) {
+    int k = c + 1;
+    if (campaigns[c].side != 2)
+        while (k < ncampaigns && campaigns[k].side != 2 && campaigns[k].game == campaigns[c].game)
+            k++;
+    return k;
+}
+
 /* Lays the campaigns out in two columns, a game's under its name, each
  * game in the first column while it holds half the rows; returns the rows */
 static int campaign_rows(ListRow* rows) {
-    int c, n = 0, total = 0, used[2] = {0, 0};
-    for (c = 0; c < ncampaigns; c++)
-        total += 1 + (campaigns[c].side != 2 && (!c || campaigns[c].game != campaigns[c - 1].game ||
-                                                 campaigns[c - 1].side == 2));
+    int c, k, n = 0, total = 0, used[2] = {0, 0};
+    for (c = 0; c < ncampaigns; c = k) {
+        k = game_end(c);
+        total += (k - c) + (campaigns[c].side != 2);
+    }
     for (c = 0; c < ncampaigns;) {
-        int k = c + 1, size, col, y;
-        if (campaigns[c].side != 2)
-            while (k < ncampaigns && campaigns[k].side != 2 && campaigns[k].game == campaigns[c].game)
-                k++;
+        int size, col, y;
+        k = game_end(c);
         size = (k - c) + (campaigns[c].side != 2);
         col = !used[0] || used[0] + 1 + size <= (total + 1) / 2 + 1 ? 0 : 1;
         if (used[col])
@@ -801,7 +809,7 @@ static int single_screen(int* difficulty, const char* note) {
     uint16_t pal[16];
     uint8_t *pic, prev;
     int demo = is_demo(), result = -1;
-    int n = demo ? campaigns[0].count : ncampaigns < 3 ? ncampaigns : 3, ty = demo ? 220 : 400;
+    int n = demo ? campaigns[0].count : ncampaigns, ty = demo ? 220 : 400;
     if (!demo && ncampaigns > 3)
         return campaign_list(difficulty, note);
     pic = load_picture("SINGLE.IMG", pal);

@@ -64,6 +64,7 @@ MISSION_BUDGET = 1900 * 1024
 # missions leave the sprites as much room
 MISSION_TOTAL = 2240 * 1024
 SKIRMISH_TILES = 1000       # the fewest tiles a skirmish map may be cut to
+MIN_TILES = 300             # and a campaign mission's
 FEAT_NONE, FEAT_WRECK = 0xFFFFFFFF, 0xFFFFFFFE      # data.h's: a feature with no sprite, a unit's wreck
 MAX_TILES = 2600
 
@@ -211,8 +212,10 @@ class Campaign:
 
 
 # The expansions, as cd_extract.py unpacks them beside the data: their
-# folders, each over the last, and their games' numbers (data.h's GAME_*)
-EXPANSIONS = [('cc', 1), ('bt', 2)]
+# folders, each over the last, which also start their missions' files'
+# names, and their games' names; their games' numbers (data.h's GAME_*) are
+# their places here, after the original's 0
+EXPANSIONS = [('cc', 'core contingency'), ('bt', 'battle tactics')]
 LENGTHS = ['very short', 'short', 'medium', 'long']     # Battle Tactics' campaigns, in turn
 
 
@@ -226,19 +229,21 @@ def find_missions():
             continue
         c = ta.read_tdf(ta.path('camps', f))
         side = c.get('header', {}).get('campaignside', 'ARM').upper()
-        game = dict(EXPANSIONS).get(os.path.basename(ta.lowest('camps', f)), 0)
+        sd = 0 if side == 'ARM' else 1
+        folder = os.path.basename(ta.lowest('camps', f))
+        game = next((i + 1 for i, (e, _) in enumerate(EXPANSIONS) if e == folder), 0)
         ms = []
         for k in sorted((k for k in c if k.startswith('mission')), key=lambda k: int(k[7:])):
             base = c[k].get('missionfile', '').lower().replace('.ota', '')
             if not ta.path('maps/%s.ota' % base) or not ta.path('maps/%s.tnt' % base):
                 continue
-            m = Mission()
-            if not fits(base, 300):
+            if not fits(base, MIN_TILES):
                 print('  mission left out, its map too large for the TT:', base)
                 continue
+            m = Mission()
             m.base = base
             m.map = base
-            m.side = 0 if side == 'ARM' else 1
+            m.side = sd
             m.ota = ta.read_tdf(ta.path('maps/%s.ota' % base))['globalheader']
             m.name = c[k].get('missionname') or m.ota.get('missionname', base)
             m.planet = m.ota.get('planet', '').strip().lower() or 'green planet'
@@ -247,20 +252,20 @@ def find_missions():
             continue
         # the original's are named by side; the expansions' by their files,
         # less the game's name: KROGOTH ENCOUNTER, ARM VERY SHORT
-        stem = f[:-4].lower().replace(' - core contingency', '').replace('battle tactics - ', '').strip()
+        own = EXPANSIONS[game - 1][1] if game else None
+        stem = ' - '.join(w for w in (w.strip() for w in f[:-4].lower().split(' - ')) if w != own)
         name = '%s CAMPAIGN' % side if game == 0 else stem.upper()
         length = next((i for i, w in enumerate(LENGTHS) if stem.endswith(w)), 0)
         bonus = game and not stem.startswith(('arm', 'core'))
-        camps.append((game, 2 if bonus else (0 if side == 'ARM' else 1), length, Campaign(
-            name, 0 if side == 'ARM' else 1, game, ms)))
-    camps = [c for _, _, _, c in sorted(camps, key=lambda c: c[:3])]
+        camps.append(((game, 2 if bonus else sd, length), Campaign(name, sd, game, ms)))
+    camps = [c for _, c in sorted(camps, key=lambda e: e[0])]
     # the files' names: the original's maps' (AC01), the expansions' numbered
     # (CC001, BT001), as their maps' names are long or could be any file's
-    files = [0, 0, 0]
+    files = [0] * (len(EXPANSIONS) + 1)
     for c in camps:
         for m in c.missions:
             files[c.game] += 1
-            m.file = '%s%03d' % (('', 'cc', 'bt')[c.game], files[c.game]) if c.game else m.base
+            m.file = '%s%03d' % (EXPANSIONS[c.game - 1][0], files[c.game]) if c.game else m.base
     sk = find_skirmish(set(m.map for c in camps for m in c.missions))
     if sk:
         camps.append(Campaign('SKIRMISH', 2, 0, sk))
@@ -280,11 +285,17 @@ def map_memory(w, h, nclasses):
     return w * h * 3 + pcells * (8 + nclasses) + (w // 2) * (h // 2) * 2, pcells
 
 
+def tile_room(mem):
+    """The tiles (512 bytes each) that MISSION_BUDGET leaves beside a map
+    that takes mem bytes (map_memory())."""
+    return (MISSION_BUDGET - mem) // 512
+
+
 def fits(stem, tiles):
     """Whether a map fits the TT: room beside it for so many tiles, and path
     cells the engine's 16-bit indices reach."""
     mem, pcells = map_memory(*ta.tnt_size(ta.path('maps/%s.tnt' % stem)), 6)
-    return (MISSION_BUDGET - mem) // 512 >= tiles and pcells <= 65535
+    return tile_room(mem) >= tiles and pcells <= 65535
 
 
 def find_skirmish(campaign_maps):
@@ -389,18 +400,15 @@ def downloads():
 def build_options(name, units):
     """The units on a builder's menu pages (guis/<name>1.gui, <name>2.gui...),
     then those download/ adds."""
-    out = []
+    names = []
     for page in range(1, 6):
         p = ta.path('guis/%s%d.gui' % (name, page))
         if not p:
             break
-        for k, v in ta.read_tdf(p).items():
-            for kk, vv in v.items():
-                if isinstance(vv, dict):
-                    nm = vv.get('name', '').lower()
-                    if nm in units and nm not in out:
-                        out.append(nm)
-    for nm in downloads().get(name, []):
+        for v in ta.read_tdf(p).values():
+            names += [vv.get('name', '').lower() for vv in v.values() if isinstance(vv, dict)]
+    out = []
+    for nm in names + downloads().get(name, []):
         if nm in units and nm not in out:
             out.append(nm)
     return out
@@ -1196,9 +1204,6 @@ def write_mission(out, m, t, mapper, game_pal, unit_names, classes, feat_defs):
                     uses.append(0)
                 uses[tiles[key]] += 1
                 tilemap.append(tiles[key])
-    # what the engine keeps for the map, and the rest for tiles
-    limit = min(MAX_TILES, (MISSION_BUDGET - map_memory(W, H, len(classes))[0]) // 512)
-    assert limit > 300, (m.base, limit)
     Image.fromarray(np.array(game_pal, np.uint8)[preview]).save(os.path.join(PREVIEWS, m.file + '.png'))
     # passability for each movement class; a cell's slope is its corner spread
     hgt = np.array(t.height, np.int32).reshape(H, W)
@@ -1234,22 +1239,25 @@ def write_mission(out, m, t, mapper, game_pal, unit_names, classes, feat_defs):
 
         def typeof(p):
             return unit_names.index(p.lower()) if p.lower() in unit_names else -1
+
+        def number(i):
+            return int(ta.number(parts[i]))
         if k == 'moveunittoradius':
             typ = typeof(parts[0])
-            args = [int(parts[1]), int(parts[2]), int(parts[3])]
+            args = [number(1), number(2), number(3)]
         elif k in ('killunittype', 'unittypekilled'):
             typ = typeof(parts[0])
-            args = [int(parts[1]) if len(parts) > 1 and parts[1] else 1, 0, 0]
+            args = [number(1) if len(parts) > 1 and parts[1] else 1, 0, 0]
         elif k in ('allunitskilledoftype', 'captureunittype', 'buildunittype', 'killalloftype'):
             typ = typeof(parts[0])
         elif k == 'unittypepassesz':
             typ = typeof(parts[0])
-            args = [int(parts[1]), 0, 0]
+            args = [number(1), 0, 0]
         elif k == 'anyunitpassesz':
-            args = [int(parts[0]), 0, 0]
+            args = [number(0), 0, 0]
         elif k in ('deathtimerrunsout', 'victorytimerrunsout'):
             # seconds, as the briefings say: 1202 is "twenty minutes", 3600 "60 minutes"
-            args = [int(ta.num({'v': parts[0]}, 'v')), 0, 0]
+            args = [number(0), 0, 0]
         elif v.strip() in ('0', ''):
             continue
         conds.append(be('hhhhh', COND[k], typ, *args))
@@ -1335,17 +1343,22 @@ def write_mission(out, m, t, mapper, game_pal, unit_names, classes, feat_defs):
         body = pad4(body)
         body += b''.join(tile_bytes)
         return body + be('I', len(bank.data)) + bytes(bank.data)
-    # and the whole of it, with the engine's arrays, within MISSION_TOTAL: the
-    # expansions' features can take a megabyte
-    rest = len(assemble(tilemap, [])) + map_memory(W, H, len(classes))[0] - W * H * 3
-    limit = min(limit, (MISSION_TOTAL - rest) // 512)
-    assert limit > 300, (m.base, limit)
+    # the tiles: what MISSION_BUDGET leaves beside the map and what the engine
+    # keeps for it, and what MISSION_TOTAL leaves beside the whole file and
+    # those arrays (the expansions' features can take a megabyte)
+    mem = map_memory(W, H, len(classes))[0]
+    rest = len(assemble(tilemap, [])) + mem - W * H * 3
+    limit = min(MAX_TILES, tile_room(mem), (MISSION_TOTAL - rest) // 512)
+    if limit < MIN_TILES:
+        print('  mission left out, too little room for its tiles:', m.base, limit)
+        return False
     if len(tile_bytes) > limit:
         tilemap, tile_bytes = merge_tiles(np.array(thumbs, np.float32), uses, tilemap, tile_bytes, limit)
     body = assemble(tilemap, tile_bytes)
     open(os.path.join(out, m.file.upper() + '.DAT'), 'wb').write(body)
     print(m.file.upper() + '.DAT', len(body), 'bytes,', len(tile_bytes), 'tiles,', len(placed), 'features,',
           len(ftypes), 'kinds')
+    return True
 
 
 # ------------------------------------------------------------------ pictures and sound
@@ -1364,25 +1377,31 @@ def write_sounds(out):
     """Short sounds at 12517 Hz, longer ones at 6258 Hz; none past MAX_SOUND
     seconds. They live in ST-RAM: past SOUND_BUDGET, as with the expansions'
     too, the long ones are cut shorter, and then more of them slower."""
+    paths = [ta.path('sounds/%s.wav' % n) for n in SOUNDS.names]
     lens = []
-    for n in SOUNDS.names:
-        w = wave.open(ta.path('sounds/%s.wav' % n))
+    for p in paths:
+        w = wave.open(p)
         lens.append(w.getnframes() / float(w.getframerate()))
+
+    def rate(secs):
+        return 12517 if secs <= short else 6258
+    # the head (below): OAS2, a count and 12 bytes a sound; each sound's
+    # samples, a byte each, padded to an even length
     for short, longest in SOUND_STEPS:
-        if 6 + 12 * len(lens) + sum(min(secs, longest) * (12517 if secs <= short else 6258) + 1
-                                    for secs in lens) <= SOUND_BUDGET:
+        if 6 + 12 * len(lens) + sum(min(secs, longest) * rate(secs) + 1 for secs in lens) <= SOUND_BUDGET:
             break
+    else:
+        sys.exit('The sounds take more than SOUND_BUDGET however short they are cut (SOUND_STEPS)')
     if (short, longest) != SOUND_STEPS[0]:
         print('  sounds over %d bytes: 12517 Hz up to %.1f s, none past %.1f s' % (SOUND_BUDGET, short, longest))
     data = bytearray()
     offs = []
-    for n, secs in zip(SOUNDS.names, lens):
-        p = ta.path('sounds/%s.wav' % n)
-        rate, code = (12517, 1) if secs <= short else (6258, 0)
-        smp = np.frombuffer(read_wav(p, rate), np.int8).astype(np.float32)
-        cap = int(longest * rate)
+    for p, secs in zip(paths, lens):
+        code = 1 if rate(secs) == 12517 else 0
+        smp = np.frombuffer(read_wav(p, rate(secs)), np.int8).astype(np.float32)
+        cap = int(longest * rate(secs))
         if len(smp) > cap:
-            fade = int(0.25 * rate)
+            fade = int(0.25 * rate(secs))
             smp = smp[:cap]
             smp[-fade:] *= np.linspace(1, 0, fade)
         b = np.clip(np.round(smp), -128, 127).astype(np.int8).tobytes()
@@ -1579,6 +1598,7 @@ def main():
     for extra in ('explode2', 'explode3', 'explode4', 'explode5', 'explosion', 'smoke 1', 'nuke1'):
         anim_ref(extra)
     write_common(out)
+    left_out = []
     for num, planet in enumerate(worlds):
         wm = [m for m in missions if m.world == num]
         if only and not any(m.base in only for m in wm):
@@ -1593,9 +1613,16 @@ def main():
             write_panel(out, num + 1, side, game_pal, mapper)
         write_sprites(out, num + 1, names, arts, mapper)
         for m in wm:
-            if not only or m.base in only:
-                write_mission(out, m, maps[m.base], mapper, game_pal, names, classes, feat_defs)
+            if (not only or m.base in only) and not write_mission(out, m, maps[m.base], mapper, game_pal,
+                                                                  names, classes, feat_defs):
+                left_out.append(m)
+        # before the next world's are read
+        del maps, game_pal, mapper
     write_sounds(out)
+    for c in camps:
+        c.missions = [m for m in c.missions if m not in left_out]
+    camps = [c for c in camps if c.missions]
+    missions = [m for m in missions if m not in left_out]
     # each mission's briefing, narration and loading picture
     last_glam = None
     for m in missions:
@@ -1628,10 +1655,10 @@ def main():
     write_picture(ta.path('bitmaps/mbriefcor.pcx') or ta.path('bitmaps/mbriefarm.pcx'),
                   os.path.join(out, 'BRIEFCOR.IMG'))
     tracks = []
-    music = os.path.join(os.path.dirname(os.path.abspath(ta.ROOT)), 'music')
+    music = os.path.join(here, 'music')
     if os.path.isdir(music) and not only:
         tracks = music_tracks(out, music)
-    video = os.path.join(os.path.dirname(os.path.abspath(ta.ROOT)), 'video')
+    video = os.path.join(here, 'video')
     if os.path.isdir(video) and not only:
         write_films(out, video)
     write_game(out, camps, worlds, tracks)

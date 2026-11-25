@@ -69,8 +69,9 @@ if [ -n "$FULL" ]; then
     python3 "$HERE/tools/cd_extract.py" "$DISC1" "$DISC2" "$SRC"
   fi
   for x in cc:Contingency bt:Tactics; do
+    [ -d "$SRC/${x%%:*}/maps" ] && continue
     disc=$(find_disc "${x#*:}")
-    if [ -n "$disc" ] && [ ! -d "$SRC/${x%%:*}/maps" ]; then
+    if [ -n "$disc" ]; then
       echo "Unpacking $(basename "$disc")..."
       python3 "$HERE/tools/cd_extract.py" "$disc" "$SRC"
     fi
@@ -99,7 +100,7 @@ else
 fi
 
 if [ ! -f "$OUT/DATA/GAME.DAT" ] || [ -n "$(find "$HERE/tools" -name '*.py' -newer "$OUT/DATA/GAME.DAT")" ] ||
-   [ -n "$(find "$SRC" -maxdepth 1 -newer "$OUT/DATA/GAME.DAT" 2>/dev/null)" ]; then
+   [ -n "$(find "$SRC" -mindepth 1 -maxdepth 1 -type d -newer "$OUT/DATA/GAME.DAT" 2>/dev/null)" ]; then
   echo "Converting $WHAT..."
   mkdir -p "$OUT/DATA"
   python3 "$HERE/tools/convert.py" "$SRC/data" "$OUT/DATA" "$PREVIEWS"

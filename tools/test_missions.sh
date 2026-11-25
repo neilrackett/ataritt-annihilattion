@@ -20,8 +20,8 @@ DATA=${DATA:-$HERE/dist/full}
 NAME=$(basename "$SCRIPT" .txt)
 MISSIONS=("$@")
 if [ ${#MISSIONS[@]} -eq 0 ]; then
-  MISSIONS=($(cd "$DATA/DATA" && ls [AC]C[0-9][0-9].DAT CC[0-9][0-9][0-9].DAT BT[0-9][0-9][0-9].DAT \
-    SK[0-9][0-9].DAT SK[0-9][0-9][0-9].DAT 2>/dev/null | sed 's/.DAT//' | tr 'A-Z' 'a-z'))
+  # every mission, and nothing else, has a briefing
+  MISSIONS=($(cd "$DATA/DATA" && ls *.TXT | sed 's/\.TXT$//' | tr 'A-Z' 'a-z'))
 fi
 TMP=$(mktemp -d)
 for m in "${MISSIONS[@]}"; do

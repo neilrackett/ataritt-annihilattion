@@ -152,6 +152,7 @@ static int wrong_version(const char* name) {
 int load_game(void) {
     uint8_t* f;
     const uint8_t* p;
+    int i;
     strcpy(dir, "DATA\\");
     f = load_file("GAME.DAT", 0, 0, 0);
     if (!f)
@@ -167,6 +168,9 @@ int load_game(void) {
     p = f + 16;
     /* the records are used where they lie: they are all an even length */
     campaigns = (Campaign*)p;
+    for (i = 0; i < ncampaigns; i++)
+        if (campaigns[i].game > GAME_BT)
+            return wrong_version("GAME.DAT");
     p += ncampaigns * sizeof(Campaign);
     missions = (MissionInfo*)p;
     p += nmissions * sizeof(MissionInfo);

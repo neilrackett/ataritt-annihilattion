@@ -14,8 +14,8 @@ OVER = []    # folders unpacked over it, as the expansions' are: the last one wi
 
 
 def _roots():
-    """The folders to look in, the one that wins first."""
-    return list(reversed(OVER)) + [ROOT]
+    """The folders to look in, as they lie: ROOT, then each of OVER over it."""
+    return [ROOT] + OVER
 
 
 @functools.lru_cache(maxsize=None)
@@ -38,7 +38,7 @@ def path(*parts):
     """Finds a file under ROOT, or a folder over it, whatever the case of its
     name; the last of OVER that has it wins."""
     parts = '/'.join(parts).split('/')
-    for r in _roots():
+    for r in reversed(_roots()):
         p = _find(r, parts)
         if p:
             return p
@@ -49,7 +49,7 @@ def lowest(*parts):
     """The first folder, ROOT or else the first of OVER, that has a file:
     where it came from, before anything over it replaced it."""
     parts = '/'.join(parts).split('/')
-    for r in reversed(_roots()):
+    for r in _roots():
         if _find(r, parts):
             return r
     return None
@@ -60,11 +60,10 @@ def _merged(folder):
     where two have the same name."""
     parts = folder.split('/')
     out = {}
-    for r in reversed(_roots()):
+    for r in _roots():
         p = _find(r, parts)
         if p and os.path.isdir(p):
-            for n in os.listdir(p):
-                out[n.lower()] = os.path.join(p, n)
+            out.update((low, os.path.join(p, n)) for low, n in _names(p).items())
     return out
 
 
@@ -76,13 +75,9 @@ def listdir(folder):
 def walk(folder):
     """Every file under folder in every root: [full path], each folder's files
     before its folders', all in name order, as os.walk with sorted lists."""
-    out = []
-    entries = sorted(_merged(folder).items(), key=lambda kv: os.path.basename(kv[1]))
-    out += [p for _, p in entries if not os.path.isdir(p)]
-    for k, p in entries:
-        if os.path.isdir(p):
-            out += walk(folder + '/' + os.path.basename(p))
-    return out
+    entries = sorted(_merged(folder).values(), key=os.path.basename)
+    return ([p for p in entries if not os.path.isdir(p)] +
+            [f for p in entries if os.path.isdir(p) for f in walk(folder + '/' + os.path.basename(p))])
 
 
 # ---------------------------------------------------------------- TDF text
@@ -127,13 +122,18 @@ def read_tdf(p):
         return parse_tdf(f.read().decode('latin-1'))
 
 
-def num(d, key, default=0.0):
+def number(v, default=0.0):
+    """A number as TA's files write it, forgivingly."""
     try:
-        return float(d.get(key, default))
+        return float(v)
     except ValueError:
         # a number followed by something else, such as 3.6. (a full game's typo)
-        m = re.match(r'\s*-?(\d+\.?\d*|\.\d+)', str(d.get(key, '')))
+        m = re.match(r'\s*-?(\d+\.?\d*|\.\d+)', str(v))
         return float(m.group(0)) if m else default
+
+
+def num(d, key, default=0.0):
+    return number(d.get(key, default), default)
 
 
 # ---------------------------------------------------------------- palette

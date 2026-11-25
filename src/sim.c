@@ -785,7 +785,7 @@ static void cover_disc(uint8_t* map, int bx, int bz, int range) {
 }
 
 /* The bucket each unit saw from when sight was last worked out, and its
- * type, or 255 for none: a unit not the player's, or not built */
+ * type, or NO_TYPE for none: a unit not the player's, or not built */
 static int16_t sight_bx[MAX_UNITS], sight_bz[MAX_UNITS];
 static uint16_t sight_type[MAX_UNITS];
 
@@ -2770,7 +2770,7 @@ static void check_objectives(void) {
         } else {
             en_units++;
             en_have[u->type]++;
-            if (unittypes[u->type].kind == UK_MOBILE && !(u->flags & UF_UNBUILT))
+            if ((type_step[u->type] & STEP_MOBILE) && !(u->flags & UF_UNBUILT))
                 en_mobile++;
             if (unittypes[u->type].flags & UF_COMMANDER)
                 en_commander = 1;

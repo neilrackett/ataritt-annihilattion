@@ -131,18 +131,18 @@ class Disc:
         return None
 
 
-# An expansion's disc: the archive that tells which it is, its folder beside
-# data/, and its archives, each over the last
+# An expansion's disc: its folder beside data/, and its archives, each over
+# the last; the first tells which disc it is
 EXPANSIONS = [
-    ('CC/CCDATA.CCX', 'cc', ['CC/CCDATA.CCX', 'CC/CCMAPS.CCX', 'CC/CCMISS.CCX']),
-    ('BT/BTDATA.CCX', 'bt', ['BT/BTDATA.CCX', 'BT/BTMAPS.CCX'] + ['BT/TACTICS%d.HPI' % i for i in range(1, 9)]),
+    ('cc', ['CC/CCDATA.CCX', 'CC/CCMAPS.CCX', 'CC/CCMISS.CCX']),
+    ('bt', ['BT/BTDATA.CCX', 'BT/BTMAPS.CCX'] + ['BT/TACTICS%d.HPI' % i for i in range(1, 9)]),
 ]
 
 
 def expansion(disc, out):
     d = Disc(disc)
-    for mark, folder, archives in EXPANSIONS:
-        if mark in d.files:
+    for folder, archives in EXPANSIONS:
+        if archives[0] in d.files:
             break
     else:
         sys.exit('%s is neither The Core Contingency nor Battle Tactics' % disc)

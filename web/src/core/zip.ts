@@ -1,11 +1,12 @@
 // Copyright (C) 2026 Neil Rackett
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// The download: the converted files in an ANNIHILA folder's DATA folder;
-// ANNIHILA.TOS goes in the ANNIHILA folder, beside it.
+// The download: the converted files in an ANNIHILA folder's DATA folder,
+// and ANNIHILA.TOS beside it when the page could fetch it.
 
 import { zipSync, type Zippable } from 'fflate';
 import type { OutFile } from './convert';
+import { PROGRAM } from './program';
 
 export const FOLDER = 'ANNIHILA';
 
@@ -17,8 +18,11 @@ export const DATA = 'DATA';
  * such as Windows' own refuses some of what fflate deflates, and most of
  * this data would not shrink much anyway.
  */
-export function buildZip(files: OutFile[]): Uint8Array {
+export function buildZip(files: OutFile[], program: Uint8Array | null = null): Uint8Array {
 	const entries: Zippable = {};
+	if (program) {
+		entries[`${FOLDER}/${PROGRAM}`] = program;
+	}
 	for (const file of files) {
 		entries[`${FOLDER}/${DATA}/${file.name}`] = file.bytes;
 	}

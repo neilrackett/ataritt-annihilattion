@@ -302,8 +302,12 @@ stage's share; `fps1`, `fps3`, `scroll` and `battle` are the ones to watch.
 (web-rextract): the same layout, theme switch, worker and stored zip. It loads
 Pyodide (pinned in `web/src/core/convert.ts` and `web/package.json`; change
 both) from jsDelivr, with numpy and Pillow, and bundles `tools/*.py` into its
-worker. `pnpm run dev` serves it locally. Only the data is converted:
-`ANNIHILA.TOS` is a download from
+worker. `pnpm run dev` serves it locally. It converts the data, and puts
+`ANNIHILA.TOS` in the zip from
+`downloads.neilrackett.com/ataritt-annihilattion/ANNIHILA.TOS`, which counts
+every download of it and lets only `labs.neilrackett.com` fetch it. So it
+fetches once a conversion, not when the page loads; served anywhere else, as
+by `pnpm run dev`, the zip has the data alone and the page points to
 [neilrackett.com/atarist/ataritt-annihilattion](https://neilrackett.com/atarist/ataritt-annihilattion).
 
 ## Workflows

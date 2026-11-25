@@ -3,23 +3,32 @@
 
 import './main.css';
 import { checkInstaller, type OutFile } from './core/convert';
+import { PROGRAM, fetchProgram } from './core/program';
 import { DATA, FOLDER, buildZip } from './core/zip';
 import type { ConvertRequest, ConvertResponse } from './worker';
 
 type StepState = 'waiting' | 'working' | 'done' | 'failed';
-type StepId = 'check' | 'loading' | 'unpacking' | 'converting';
+type StepId = 'check' | 'loading' | 'unpacking' | 'converting' | 'program';
 
 const STEPS: { id: StepId; label: string }[] = [
 	{ id: 'check', label: "The demo's installer" },
 	{ id: 'loading', label: 'Python, numpy and Pillow' },
 	{ id: 'unpacking', label: "Unpacking the demo's data" },
 	{ id: 'converting', label: 'Converting it for the TT' },
+	{ id: 'program', label: `${PROGRAM}, the program` },
 ];
+
+const SITE = '<a href="https://neilrackett.com/atarist/ataritt-annihilattion" target="_blank">neilrackett.com</a>';
 
 let installer: { name: string; data: ArrayBuffer } | null = null;
 let state: Record<StepId, StepState> = blank();
 let detail: Partial<Record<StepId, string>> = {};
 let files: OutFile[] | null = null;
+// the program, fetched while the data converts; null if it couldn't be
+let program: Uint8Array | null = null;
+let programFetched: Promise<void> = Promise.resolve();
+// which conversion is current, so that a fetch from before Start again is ignored
+let run = 0;
 let worker: Worker | null = null;
 let started = 0;
 let ticker = 0;
@@ -35,7 +44,7 @@ const resetButton = el<HTMLButtonElement>('reset');
 const themeButton = el<HTMLButtonElement>('theme');
 
 function blank(): Record<StepId, StepState> {
-	return { check: 'waiting', loading: 'waiting', unpacking: 'waiting', converting: 'waiting' };
+	return { check: 'waiting', loading: 'waiting', unpacking: 'waiting', converting: 'waiting', program: 'waiting' };
 }
 
 // --- colour theme ----------------------------------------------------
@@ -146,8 +155,28 @@ function convert(): void {
 	};
 	started = Date.now();
 	ticker = window.setInterval(render, 1000);
+	programFetched = getProgram(run);
 	const request: ConvertRequest = { installer: data };
 	worker.postMessage(request, [data]);
+	render();
+}
+
+/**
+ * Once a conversion, so that each counts as one download where the site
+ * counts them.
+ */
+async function getProgram(mine: number): Promise<void> {
+	state.program = 'working';
+	render();
+	const bytes = await fetchProgram();
+	if (mine !== run) {
+		return;
+	}
+	program = bytes;
+	state.program = bytes ? 'done' : 'failed';
+	detail.program = bytes
+		? `from downloads.neilrackett.com &middot; ${Math.round(bytes.length / 1024)}KB`
+		: `couldn't be fetched: download it from ${SITE}`;
 	render();
 }
 
@@ -156,7 +185,8 @@ function finish(): void {
 	worker = null;
 	window.clearInterval(ticker);
 	if (files) {
-		download();
+		const mine = run;
+		void programFetched.then(() => mine === run && download());
 	}
 }
 
@@ -164,7 +194,7 @@ function download(): void {
 	if (!files) {
 		return;
 	}
-	const zip = buildZip(files);
+	const zip = buildZip(files, program);
 	const url = URL.createObjectURL(new Blob([zip as BlobPart], { type: 'application/zip' }));
 	const a = document.createElement('a');
 	a.href = url;
@@ -186,17 +216,30 @@ async function saveToFolder(): Promise<void> {
 		const picked = await (window as unknown as {
 			showDirectoryPicker(options?: { mode?: string }): Promise<FileSystemDirectoryHandle>;
 		}).showDirectoryPicker({ mode: 'readwrite' });
+		// after picking: the picker opens only while the click is fresh
+		await programFetched;
 		const data = await picked.getDirectoryHandle(DATA, { create: true });
-		for (const file of files) {
-			const handle = await data.getFileHandle(file.name, { create: true });
+		const write = async (folder: FileSystemDirectoryHandle, name: string, bytes: Uint8Array) => {
+			const handle = await folder.getFileHandle(name, { create: true });
 			const stream = await handle.createWritable();
-			await stream.write(file.bytes as BufferSource);
+			await stream.write(bytes as BufferSource);
 			await stream.close();
+		};
+		for (const file of files) {
+			await write(data, file.name, file.bytes);
 		}
-		messages.innerHTML =
-			`<p><strong>${files.length} files written to a <code>${DATA}</code> folder in the folder you chose.</strong></p>` +
-			`<p>Put <code>ANNIHILA.TOS</code> in the folder you chose, beside <code>${DATA}</code>, copy it to ` +
-			'your TT\'s hard disk and run <code>ANNIHILA.TOS</code>.</p>';
+		if (program) {
+			await write(picked, PROGRAM, program);
+			messages.innerHTML =
+				`<p><strong>${files.length} files written to a <code>${DATA}</code> folder in the folder you ` +
+				`chose, and <code>${PROGRAM}</code> beside it.</strong></p>` +
+				`<p>Copy the folder to your TT's hard disk and run <code>${PROGRAM}</code>.</p>`;
+		} else {
+			messages.innerHTML =
+				`<p><strong>${files.length} files written to a <code>${DATA}</code> folder in the folder you chose.</strong></p>` +
+				`<p>Put <code>${PROGRAM}</code>, from ${SITE}, in the folder you chose, beside <code>${DATA}</code>, ` +
+				`copy it to your TT's hard disk and run <code>${PROGRAM}</code>.</p>`;
+		}
 	} catch (e) {
 		const err = e as Error;
 		if (err.name !== 'AbortError') {
@@ -206,10 +249,12 @@ async function saveToFolder(): Promise<void> {
 }
 
 function reset(): void {
+	run++;
 	installer = null;
 	state = blank();
 	detail = {};
 	files = null;
+	program = null;
 	picker.value = '';
 	render();
 }
@@ -245,13 +290,20 @@ function render(): void {
 	resetButton.hidden = busy || (state.check === 'waiting' && !files);
 	dropZone.classList.toggle('disabled', busy);
 
-	const failed = STEPS.some(({ id }) => state[id] === 'failed');
-	if (files) {
-		const kb = Math.round(files.reduce((n, f) => n + f.bytes.length, 0) / 1024);
+	const failed = STEPS.some(({ id }) => id !== 'program' && state[id] === 'failed');
+	if (files && state.program === 'working') {
+		messages.innerHTML = `<p>Converted. The zip downloads when <code>${PROGRAM}</code> has come.</p>`;
+	} else if (files) {
+		const all = files.map((f) => f.bytes).concat(program ? [program] : []);
+		const kb = Math.round(all.reduce((n, b) => n + b.length, 0) / 1024);
 		messages.innerHTML =
-			`<p><strong>${files.length} files, ${kb.toLocaleString()}KB, in ${FOLDER}-DATA.zip.</strong></p>` +
-			`<p>Unzip it, put <code>ANNIHILA.TOS</code> in the <code>${FOLDER}</code> folder, beside ` +
-			`<code>${DATA}</code>, copy the folder to your TT's hard disk and run <code>ANNIHILA.TOS</code>.</p>` +
+			`<p><strong>${all.length} files, ${kb.toLocaleString()}KB, in ${FOLDER}-DATA.zip.</strong></p>` +
+			(program
+				? `<p>Unzip it, copy the <code>${FOLDER}</code> folder to your TT's hard disk and run ` +
+					`<code>${PROGRAM}</code>.</p>`
+				: `<p>Unzip it, put <code>${PROGRAM}</code>, from ${SITE}, in the <code>${FOLDER}</code> folder, ` +
+					`beside <code>${DATA}</code>, copy the folder to your TT's hard disk and run ` +
+					`<code>${PROGRAM}</code>.</p>`) +
 			'<p><button type="button" id="again" class="link">Download the zip again</button></p>';
 		el<HTMLButtonElement>('again').addEventListener('click', download);
 	} else if (busy) {
